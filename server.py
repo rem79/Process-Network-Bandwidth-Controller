@@ -309,31 +309,34 @@ def get_daily(days: int = Query(7, ge=1, le=90)):
 def get_process_connections(pid: int):
     try:
         proc = psutil.Process(pid)
+        proc_name = proc.name()
         conns = proc.connections(kind='inet')
         results = []
         for c in conns:
             laddr = f"{c.laddr.ip}:{c.laddr.port}" if c.laddr else "N/A"
             raddr = f"{c.raddr.ip}:{c.raddr.port}" if c.raddr else "N/A"
             results.append({
-                "fd": c.fd,
+                "fd": getattr(c, 'fd', -1),
                 "family": str(c.family.name) if hasattr(c.family, 'name') else str(c.family),
                 "type": "TCP" if c.type == 1 else "UDP",
                 "local_address": laddr,
                 "remote_address": raddr,
-                "status": c.status
+                "status": c.status if c.status else ("LISTENING" if c.type == 1 else "ACTIVE")
             })
         return {
             "pid": pid,
-            "name": proc.name(),
+            "name": proc_name,
             "connections": results,
             "count": len(results)
         }
-    except psutil.NoSuchProcess:
-        raise HTTPException(status_code=404, detail="Process not found or terminated")
-    except psutil.AccessDenied:
-        raise HTTPException(status_code=403, detail="Access denied to query process connections")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (psutil.NoSuchProcess, psutil.AccessDenied, Exception) as e:
+        return {
+            "pid": pid,
+            "name": f"PID {pid}",
+            "connections": [],
+            "count": 0,
+            "error": str(e)
+        }
 
 @app.get("/")
 def read_root():

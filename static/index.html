@@ -291,42 +291,48 @@
   </main>
 
   <!-- QoS Limit Modal -->
-  <div class="modal-backdrop" id="limitModal">
+  <div class="modal-backdrop" id="limitModal" onclick="onBackdropClick(event, 'limitModal')">
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title-group">
-          <div class="modal-icon"><i data-lucide="gauge"></i></div>
+          <div class="modal-icon"><i data-lucide="sliders"></i></div>
           <div>
-            <h3 id="modalTargetTitle">Configure Speed Limit</h3>
-            <p id="modalTargetSub" class="modal-sub">Windows NetQosPolicy Bandwidth Capping</p>
+            <h3 id="modalTargetTitle">Configure QoS Bandwidth Limit</h3>
+            <p id="modalTargetSub" class="modal-sub">Limit network traffic bandwidth cap</p>
           </div>
         </div>
         <button class="btn-close" onclick="closeLimitModal()"><i data-lucide="x"></i></button>
       </div>
 
       <div class="modal-body">
-        <div class="form-group">
-          <label>BANDWIDTH LIMIT PRESETS (10 KB/s ~ 100 GB/s)</label>
-          <div class="preset-pill-grid">
-            <button class="pill-btn" onclick="selectModalPreset(10)">10 KB/s</button>
-            <button class="pill-btn" onclick="selectModalPreset(100)">100 KB/s</button>
-            <button class="pill-btn" onclick="selectModalPreset(500)">500 KB/s</button>
-            <button class="pill-btn" onclick="selectModalPreset(1024)">1 MB/s</button>
-            <button class="pill-btn" onclick="selectModalPreset(10240)">10 MB/s</button>
-            <button class="pill-btn" onclick="selectModalPreset(102400)">100 MB/s</button>
-            <button class="pill-btn" onclick="selectModalPreset(1048576)">1 GB/s</button>
-            <button class="pill-btn" onclick="selectModalPreset(10485760)">10 GB/s</button>
-            <button class="pill-btn" onclick="selectModalPreset(104857600)">100 GB/s</button>
-            <button class="pill-btn pill-danger" style="grid-column: span 3;" onclick="selectModalPreset(0)">UNLIMITED</button>
-          </div>
+        <!-- Quick Micro-Presets Row -->
+        <label>MICRO-BANDWIDTH PRESETS</label>
+        <div class="preset-pills-row">
+          <button type="button" class="preset-pill" onclick="selectModalPreset(10)">10 KB/s</button>
+          <button type="button" class="preset-pill" onclick="selectModalPreset(100)">100 KB/s</button>
+          <button type="button" class="preset-pill" onclick="selectModalPreset(500)">500 KB/s</button>
+          <button type="button" class="preset-pill" onclick="selectModalPreset(1024)">1 MB/s</button>
+          <button type="button" class="preset-pill" onclick="selectModalPreset(10240)">10 MB/s</button>
+          <button type="button" class="preset-pill" onclick="selectModalPreset(102400)">100 MB/s</button>
+          <button type="button" class="preset-pill" onclick="selectModalPreset(1048576)">1 GB/s</button>
+          <button type="button" class="preset-pill pill-off" onclick="selectModalPreset(0)">Off (None)</button>
         </div>
 
         <div class="form-group">
-          <div class="label-row">
-            <label for="limitSlider">CUSTOM SPEED LIMIT (1 KB/s ~ 100 GB/s)</label>
-            <span class="value-display" id="modalValDisplay">1024 KB/s (1.0 MB/s)</span>
+          <div class="form-label-row">
+            <label for="limitSlider">BANDWIDTH LIMIT SLIDER</label>
+            <span class="val-display" id="modalValDisplay">1.0 MB/s (1,024 KB/s | ~8.19 Mbps)</span>
           </div>
-          <input type="range" id="limitSlider" min="0" max="104857600" step="1" value="1024" oninput="onSliderChange(this.value)">
+          <input type="range" id="limitSlider" min="0" max="10485760" step="10" value="1024" oninput="onSliderChange(this.value)">
+          <div class="slider-ticks">
+            <span>OFF</span>
+            <span>100 KB/s</span>
+            <span>1 MB/s</span>
+            <span>10 MB/s</span>
+            <span>100 MB/s</span>
+            <span>1 GB/s</span>
+            <span>10 GB/s</span>
+          </div>
         </div>
 
         <div class="form-group row-inputs">
@@ -372,7 +378,7 @@
   </div>
 
   <!-- Sockets / Connection Inspector Modal -->
-  <div class="modal-backdrop" id="connectionsModal">
+  <div class="modal-backdrop" id="connectionsModal" onclick="onBackdropClick(event, 'connectionsModal')">
     <div class="modal-card modal-lg">
       <div class="modal-header">
         <div class="modal-title-group">

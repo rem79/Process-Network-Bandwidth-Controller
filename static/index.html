@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Process Network Bandwidth Controller</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="bg-glow-orb orb-1"></div>
+  <div class="bg-glow-orb orb-2"></div>
+  <div class="bg-grid-pattern"></div>
+
+  <div class="app-container">
+    <!-- Top Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">
+          <i data-lucide="activity" class="icon-pulse"></i>
+        </div>
+        <div class="brand-text">
+          <h1>PROCESS NETWORK <span class="badge-tag">BANDWIDTH CONTROLLER</span></h1>
+          <p class="subtitle">Next-Gen Windows QoS Telemetry & Bandwidth Sentinel</p>
+        </div>
+      </div>
+      <div class="status-bar">
+        <div class="status-badge" id="autostartStatus" onclick="toggleAutostartUI()" style="cursor: pointer;" title="Click to toggle Windows Startup">
+          <i data-lucide="power"></i> <span id="autostartText">Auto-Start: OFF</span>
+        </div>
+        <div class="status-badge" id="adminStatus">
+          <i data-lucide="shield-alert"></i> <span id="adminText">Checking Privileges...</span>
+        </div>
+        <div class="status-badge live-pulse" id="connectionStatus">
+          <span class="pulse-dot"></span> <span id="connText">CONNECTING</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" id="tabLiveBtn" onclick="switchTab('live')">
+        <i data-lucide="gauge"></i> Real-time Live Sentinel
+      </button>
+      <button class="nav-tab" id="tabAnalyticsBtn" onclick="switchTab('analytics')">
+        <i data-lucide="bar-chart-3"></i> Traffic Analytics & History
+      </button>
+      <button class="nav-tab" id="tabPoliciesBtn" onclick="switchTab('policies')">
+        <i data-lucide="shield-check"></i> Active QoS Rules (<span id="tabRulesCount">0</span>)
+      </button>
+    </nav>
+
+    <!-- TAB 1: LIVE SENTINEL VIEW -->
+    <div id="viewLive" class="tab-view active">
+      <!-- Hero Stats Grid -->
+      <section class="stats-grid">
+        <!-- Download Speed Card -->
+        <div class="stat-card card-down">
+          <div class="card-glow glow-cyan"></div>
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="arrow-down-left" class="icon-cyan"></i>
+              <span>SYSTEM DOWNLOAD</span>
+            </div>
+            <span class="trend-tag tag-cyan">RECV RATE</span>
+          </div>
+          <div class="card-value-group">
+            <div class="card-value" id="totalDownFormatted">0.0 KB/s</div>
+            <div class="card-subtext" id="totalDownRaw">Total: 0 MB</div>
+          </div>
+          <div class="chart-container">
+            <canvas id="downChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Upload Speed Card -->
+        <div class="stat-card card-up">
+          <div class="card-glow glow-violet"></div>
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="arrow-up-right" class="icon-violet"></i>
+              <span>SYSTEM UPLOAD</span>
+            </div>
+            <span class="trend-tag tag-violet">SENT RATE</span>
+          </div>
+          <div class="card-value-group">
+            <div class="card-value" id="totalUpFormatted">0.0 KB/s</div>
+            <div class="card-subtext" id="totalUpRaw">Total: 0 MB</div>
+          </div>
+          <div class="chart-container">
+            <canvas id="upChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Quick Control Card -->
+        <div class="stat-card card-control">
+          <div class="card-glow glow-amber"></div>
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="sliders" class="icon-amber"></i>
+              <span>GLOBAL SPEED LIMIT</span>
+            </div>
+            <span class="trend-tag tag-amber" id="globalLimitBadge">UNLIMITED</span>
+          </div>
+          <div class="global-limit-body">
+            <p class="desc-text">Apply system-wide Windows NetQos bandwidth rule.</p>
+            <div class="preset-buttons">
+              <button class="btn-preset" onclick="setGlobalPreset(500)">500 KB/s</button>
+              <button class="btn-preset" onclick="setGlobalPreset(2048)">2 MB/s</button>
+              <button class="btn-preset" onclick="setGlobalPreset(10240)">10 MB/s</button>
+              <button class="btn-preset btn-clear" onclick="removeGlobalLimit()">Off</button>
+            </div>
+            <button class="btn-primary w-full" onclick="openLimitModal('global', ' 전체 시스템 (Global)')">
+              <i data-lucide="settings-2"></i> Custom Global Limit
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Process Monitoring Table Section -->
+      <section class="main-table-section">
+        <div class="table-toolbar">
+          <div class="table-title">
+            <i data-lucide="cpu"></i>
+            <h2>PROCESS TRAFFIC SENTINEL</h2>
+            <span class="count-badge" id="procCountBadge">0 Active</span>
+          </div>
+
+          <div class="toolbar-controls">
+            <!-- Filter Chips -->
+            <div class="category-filters">
+              <button class="filter-chip active" data-filter="all" onclick="setCategoryFilter('all')">All</button>
+              <button class="filter-chip" data-filter="browser" onclick="setCategoryFilter('browser')">Browsers</button>
+              <button class="filter-chip" data-filter="high" onclick="setCategoryFilter('high')">High Usage</button>
+              <button class="filter-chip" data-filter="limited" onclick="setCategoryFilter('limited')">Throttled</button>
+            </div>
+
+            <div class="search-box">
+              <i data-lucide="search" class="search-icon"></i>
+              <input type="text" id="searchInput" placeholder="Search process or PID..." oninput="filterProcesses()">
+            </div>
+
+            <div class="sort-selector">
+              <i data-lucide="arrow-down-up"></i>
+              <select id="sortSelect" onchange="renderProcesses()">
+                <option value="traffic">Total Traffic (Desc)</option>
+                <option value="down">Download Speed</option>
+                <option value="up">Upload Speed</option>
+                <option value="connections">Socket Connections</option>
+                <option value="name">Process Name</option>
+                <option value="pid">PID</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Process Table -->
+        <div class="table-wrapper">
+          <table class="antigravity-table">
+            <thead>
+              <tr>
+                <th>PROCESS & EXECUTABLE</th>
+                <th>PID</th>
+                <th>CONNECTIONS</th>
+                <th>DOWNLOAD SPEED</th>
+                <th>UPLOAD SPEED</th>
+                <th>CPU / RAM</th>
+                <th>LIMIT STATUS</th>
+                <th class="text-right">ACTION</th>
+              </tr>
+            </thead>
+            <tbody id="processTableBody">
+              <tr class="empty-row">
+                <td colspan="8">
+                  <div class="loading-spinner"></div>
+                  <p>Initializing process telemetry stream...</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- TAB 2: TRAFFIC ANALYTICS & HISTORY VIEW -->
+    <div id="viewAnalytics" class="tab-view">
+      <div class="analytics-layout">
+        <!-- Top Bandwidth Consumers Card -->
+        <div class="analytics-card">
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="trophy" class="icon-amber"></i>
+              <span>TOP BANDWIDTH CONSUMERS (LAST 24H)</span>
+            </div>
+            <button class="btn-sm-secondary" onclick="loadAnalyticsData()">
+              <i data-lucide="refresh-cw"></i> Refresh
+            </button>
+          </div>
+          <div class="top-list-container" id="topConsumersList">
+            <div class="loading-spinner"></div>
+          </div>
+        </div>
+
+        <!-- Daily Cumulative History Card -->
+        <div class="analytics-card">
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="calendar" class="icon-cyan"></i>
+              <span>DAILY DATA USAGE SUMMARY</span>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table class="antigravity-table">
+              <thead>
+                <tr>
+                  <th>DATE</th>
+                  <th>APPLICATION</th>
+                  <th>UPLOAD</th>
+                  <th>DOWNLOAD</th>
+                  <th>TOTAL DATA</th>
+                </tr>
+              </thead>
+              <tbody id="dailyHistoryBody">
+                <tr class="empty-row"><td colspan="5">Loading analytics history...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: ACTIVE QOS POLICIES VIEW -->
+    <div id="viewPolicies" class="tab-view">
+      <div class="policies-container">
+        <div class="card-header policy-header">
+          <div class="card-title">
+            <i data-lucide="shield-check" class="icon-emerald"></i>
+            <span>CONFIGURED QOS POLICIES</span>
+          </div>
+          <button class="btn-danger-outline" onclick="clearAllPolicies()">
+            <i data-lucide="trash-2"></i> Clear All Policies
+          </button>
+        </div>
+        <div class="policy-list-grid" id="fullPoliciesGrid">
+          <p class="empty-text">No QoS limits currently active.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Speed Limit Config Modal -->
+  <div class="modal-backdrop" id="limitModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-icon"><i data-lucide="gauge"></i></div>
+          <div>
+            <h3 id="modalTargetTitle">Configure Speed Limit</h3>
+            <p id="modalTargetSub" class="modal-sub">Set Windows NetQos bandwidth throttle</p>
+          </div>
+        </div>
+        <button class="btn-close" onclick="closeLimitModal()"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label>BANDWIDTH LIMIT PRESETS (UP TO 100 GB/s)</label>
+          <div class="preset-pill-grid">
+            <button class="pill-btn" onclick="selectModalPreset(1024)">1 MB/s</button>
+            <button class="pill-btn" onclick="selectModalPreset(10240)">10 MB/s</button>
+            <button class="pill-btn" onclick="selectModalPreset(102400)">100 MB/s</button>
+            <button class="pill-btn" onclick="selectModalPreset(1048576)">1 GB/s</button>
+            <button class="pill-btn" onclick="selectModalPreset(10485760)">10 GB/s</button>
+            <button class="pill-btn" onclick="selectModalPreset(104857600)">100 GB/s</button>
+            <button class="pill-btn pill-danger" style="grid-column: span 3;" onclick="selectModalPreset(0)">UNLIMITED</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="label-row">
+            <label for="limitSlider">CUSTOM SPEED LIMIT (KB/s)</label>
+            <span class="value-display" id="modalValDisplay">1024 KB/s (1.0 MB/s)</span>
+          </div>
+          <input type="range" id="limitSlider" min="0" max="104857600" step="1024" value="1024" oninput="onSliderChange(this.value)">
+        </div>
+
+        <div class="form-group row-inputs">
+          <div>
+            <label for="customLimitInput">EXACT VALUE (KB/s)</label>
+            <input type="number" id="customLimitInput" min="0" value="1024" oninput="onNumberInputChange(this.value)">
+          </div>
+          <div>
+            <label>TRAFFIC PRIORITY</label>
+            <select id="prioritySelect" class="select-input">
+              <option value="normal">Normal Priority</option>
+              <option value="high">High Priority (DSCP 46)</option>
+              <option value="low">Low Priority (DSCP 10)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>MATCH TARGET</label>
+          <input type="text" id="targetExeInput" readonly class="read-only-input">
+        </div>
+
+        <div class="alert-info" id="adminNotice">
+          <i data-lucide="info"></i>
+          <span>Windows QoS rules enforce maximum bandwidth cap per process across system sockets.</span>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeLimitModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitLimitModal()">
+          <i data-lucide="check"></i> Apply Limit
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sockets / Connection Inspector Modal -->
+  <div class="modal-backdrop" id="connectionsModal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-icon"><i data-lucide="network"></i></div>
+          <div>
+            <h3 id="connModalTitle">Active Sockets</h3>
+            <p id="connModalSub" class="modal-sub">Live TCP/UDP endpoint connections</p>
+          </div>
+        </div>
+        <button class="btn-close" onclick="closeConnectionsModal()"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="table-wrapper modal-table">
+          <table class="antigravity-table">
+            <thead>
+              <tr>
+                <th>PROTOCOL</th>
+                <th>LOCAL ADDRESS</th>
+                <th>REMOTE ENDPOINT</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody id="connTableBody">
+              <tr class="empty-row"><td colspan="4">Loading active endpoints...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeConnectionsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

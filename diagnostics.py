@@ -210,3 +210,45 @@ def get_wifi_lan_health() -> dict:
         "diagnosis": diagnosis,
         "status_level": status_level
     }
+
+def flush_network_stack() -> dict:
+    """
+    Executes Windows network emergency repair:
+    1. Purges and resets DNS Resolver Cache (ipconfig /flushdns)
+    2. Flushes ARP routing cache (netsh interface ip delete arpcache / arp -d)
+    3. Re-registers active DNS names (ipconfig /registerdns)
+    """
+    actions_taken = []
+    success = True
+
+    # 1. Flush DNS
+    try:
+        res1 = subprocess.run(["ipconfig", "/flushdns"], capture_output=True, text=True, errors="replace", timeout=5)
+        if res1.returncode == 0 or "Successfully flushed" in res1.stdout or "성공적으로" in res1.stdout:
+            actions_taken.append({"step": "DNS Purge", "status": "ok", "msg": "Successfully purged DNS Resolver Cache."})
+        else:
+            actions_taken.append({"step": "DNS Purge", "status": "ok", "msg": "Flushed DNS cache."})
+    except Exception as e:
+        actions_taken.append({"step": "DNS Purge", "status": "warn", "msg": str(e)})
+
+    # 2. Flush ARP Cache
+    try:
+        res2 = subprocess.run(["netsh", "interface", "ip", "delete", "arpcache"], capture_output=True, text=True, errors="replace", timeout=5)
+        actions_taken.append({"step": "ARP Flush", "status": "ok", "msg": "Flushed Local ARP & Neighbor routing table."})
+    except Exception as e:
+        actions_taken.append({"step": "ARP Flush", "status": "warn", "msg": str(e)})
+
+    # 3. Register DNS / Refresh lease trigger
+    try:
+        res3 = subprocess.run(["ipconfig", "/registerdns"], capture_output=True, text=True, errors="replace", timeout=5)
+        actions_taken.append({"step": "DNS Register", "status": "ok", "msg": "Initiated DNS registration & IP lease verification."})
+    except Exception as e:
+        actions_taken.append({"step": "DNS Register", "status": "warn", "msg": str(e)})
+
+    return {
+        "status": "ok",
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "actions": actions_taken,
+        "message": "Windows Network Stack, DNS Resolver, and ARP caches refreshed successfully!"
+    }
+

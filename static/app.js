@@ -1197,6 +1197,62 @@ function showToast(message, type = 'info') {
   }, 3500);
 }
 
+// ----------------------------------------------------
+// One-Click Network Emergency Flush & Repair
+// ----------------------------------------------------
+function executeNetworkFlush() {
+  const btnEl = document.getElementById('btnFlushNetwork');
+  const logContainer = document.getElementById('flushActionLog');
+  if (!logContainer) return;
+
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = `<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div> Repairing Network...`;
+  }
+
+  logContainer.innerHTML = `<div class="flush-idle-msg">Executing Windows Network Stack Flush (DNS Purge, ARP Cache Reset, DNS Re-registration)...</div>`;
+
+  fetch('/api/diagnostics/flush', {
+    method: 'POST'
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = `<i data-lucide="zap"></i> Run Emergency Flush & Repair`;
+    }
+
+    if (data.status === 'ok') {
+      showToast("Network Stack & DNS flushed successfully!", "success");
+      let html = `<div class="flush-steps-container">`;
+      (data.actions || []).forEach(act => {
+        html += `
+          <div class="flush-step-row">
+            <span class="flush-step-title">✅ ${escapeHtml(act.step)}</span>
+            <span class="flush-step-msg">${escapeHtml(act.msg)}</span>
+          </div>
+        `;
+      });
+      html += `</div>`;
+      logContainer.innerHTML = html;
+      loadDiagnosticsHealth(); // Refresh adapter health
+    } else {
+      showToast(data.message || "Flush encountered issues", "warning");
+      logContainer.innerHTML = `<div class="text-danger" style="font-size:0.85rem;">⚠️ ${escapeHtml(data.message)}</div>`;
+    }
+    if (window.lucide) lucide.createIcons();
+  })
+  .catch(err => {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = `<i data-lucide="zap"></i> Run Emergency Flush & Repair`;
+    }
+    showToast(`Failed to flush network: ${err.message}`, "danger");
+    logContainer.innerHTML = `<div class="text-danger" style="font-size:0.85rem;">⚠️ Error: ${escapeHtml(err.message)}</div>`;
+    if (window.lucide) lucide.createIcons();
+  });
+}
+
 function showNotification(message, type = 'info') {
   showToast(message, type);
 }

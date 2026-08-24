@@ -396,6 +396,11 @@ def traceroute_endpoint(req: TracerouteRequest):
 def health_endpoint():
     return diagnostics.get_wifi_lan_health()
 
+@app.post("/api/diagnostics/flush")
+def flush_network_endpoint():
+    """Flushes DNS Resolver cache, ARP table, and refreshes network stack"""
+    return diagnostics.flush_network_stack()
+
 @app.get("/api/map/connections")
 def global_map_connections():
     """Aggregates all active outbound connections across processes for Global Cyber Map"""

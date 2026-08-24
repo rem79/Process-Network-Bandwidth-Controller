@@ -1546,6 +1546,79 @@ input[type="number"]:focus, .select-input:focus {
 .hop-name { font-size: 0.8rem; font-weight: 700; color: #FFFFFF; }
 .hop-ip { font-size: 0.75rem; color: var(--text-sub); font-family: var(--font-mono); }
 
+/* One-Click Emergency Flush Card */
+.diag-tool-full {
+  grid-column: 1 / -1;
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.05) 0%, rgba(13, 20, 36, 0.7) 100%);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+.icon-emerald { color: #10B981 !important; }
+.btn-emerald {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #10B981;
+  color: #070A12;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-emerald:hover {
+  background: #059669;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.5);
+}
+.flush-repair-desc {
+  margin-bottom: 12px;
+}
+.flush-repair-desc p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-sub);
+  margin: 0;
+}
+.flush-action-log {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  min-height: 80px;
+}
+.flush-idle-msg {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.flush-steps-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.flush-step-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  border-left: 3px solid #10B981;
+}
+.flush-step-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+.flush-step-msg {
+  font-size: 0.75rem;
+  color: var(--text-sub);
+}
+
+
 /* Playbook & Manual Modal Styles */
 .btn-playbook-trigger {
   background: rgba(0, 242, 254, 0.12) !important;

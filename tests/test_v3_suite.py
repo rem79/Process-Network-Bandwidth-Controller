@@ -78,9 +78,15 @@ class TestV3Suite(unittest.TestCase):
         res_ns = server.nslookup_endpoint(req_ns)
         self.assertEqual(res_ns["domain"], "netflix.com")
 
-        # Map connections endpoint
-        res_map = server.global_map_connections()
-        self.assertIsInstance(res_map, list)
+        # Flush endpoint
+        res_flush = server.flush_network_endpoint()
+        self.assertEqual(res_flush["status"], "ok")
+        self.assertTrue(len(res_flush["actions"]) > 0)
+
+    def test_network_flush_standalone(self):
+        res = diagnostics.flush_network_stack()
+        self.assertEqual(res["status"], "ok")
+        self.assertIn("actions", res)
 
 if __name__ == "__main__":
     unittest.main()

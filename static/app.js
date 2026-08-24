@@ -371,15 +371,30 @@ function openLimitModal(targetName, displayTitle, appExe = '', currentKbps = 0, 
   currentModalTarget = targetName;
   currentModalExe = appExe || targetName;
 
-  document.getElementById('modalTargetTitle').innerText = `Limit Speed: ${displayTitle}`;
-  document.getElementById('modalTargetSub').innerText = targetName === 'global' ? 'System-wide network throttling' : `Executable: ${currentModalExe}`;
-  document.getElementById('targetExeInput').value = currentModalExe;
-  document.getElementById('prioritySelect').value = priority || 'normal';
+  const titleEl = document.getElementById('modalTargetTitle') || document.getElementById('modalTitle');
+  if (titleEl) titleEl.innerText = `Limit Speed: ${displayTitle}`;
+
+  const subEl = document.getElementById('modalTargetSub') || document.getElementById('modalSub');
+  if (subEl) subEl.innerText = targetName === 'global' ? 'System-wide network throttling' : `Executable: ${currentModalExe}`;
+
+  const targetInput = document.getElementById('targetExeInput');
+  if (targetInput) targetInput.value = currentModalExe;
+
+  const priorityEl = document.getElementById('prioritySelect');
+  if (priorityEl) priorityEl.value = priority || 'normal';
 
   const initVal = currentKbps > 0 ? currentKbps : 1024;
   updateModalValueDisplays(initVal);
 
-  document.getElementById('limitModal').classList.add('show');
+  const modalEl = document.getElementById('limitModal');
+  if (modalEl) modalEl.classList.add('show');
+}
+
+function openLimitModalFromDataset(el) {
+  const target = el.getAttribute('data-target') || '';
+  const name = el.getAttribute('data-name') || target;
+  const exe = el.getAttribute('data-exe') || target;
+  openLimitModal(target, name, exe);
 }
 
 function closeLimitModal() {
@@ -535,7 +550,7 @@ function loadAnalyticsData() {
             <div class="top-breakdown">↓ ${item.total_down_formatted} / ↑ ${item.total_up_formatted}</div>
           </div>
           <div class="top-action">
-            <button class="btn-action-limit" title="Set QoS Bandwidth Limit" onclick="openLimitModal('${escapeHtml(item.exe || item.name)}', '${escapeHtml(item.name)}')">
+            <button class="btn-action-limit" title="Set QoS Bandwidth Limit" data-target="${escapeHtml(item.name)}" data-name="${escapeHtml(item.name)}" data-exe="${escapeHtml(item.exe || item.name)}" onclick="openLimitModalFromDataset(this)">
               <i data-lucide="sliders"></i> Limit
             </button>
           </div>
@@ -569,7 +584,7 @@ function loadAnalyticsData() {
           <td class="speed-text down">${r.down_formatted}</td>
           <td><strong>${r.total_formatted}</strong></td>
           <td class="text-right">
-            <button class="btn-action-limit" title="Set QoS Bandwidth Limit" onclick="openLimitModal('${escapeHtml(r.exe || r.name)}', '${escapeHtml(r.name)}')">
+            <button class="btn-action-limit" title="Set QoS Bandwidth Limit" data-target="${escapeHtml(r.name)}" data-name="${escapeHtml(r.name)}" data-exe="${escapeHtml(r.exe || r.name)}" onclick="openLimitModalFromDataset(this)">
               <i data-lucide="sliders"></i> Limit
             </button>
           </td>

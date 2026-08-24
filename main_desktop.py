@@ -162,8 +162,8 @@ def main():
 
     app_window.events.closing += on_closing
 
-    logging.info("Starting PyWebView event loop with private_mode...")
-    webview.start(private_mode=True)
+    logging.info("Starting PyWebView event loop...")
+    webview.start(private_mode=False)
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()

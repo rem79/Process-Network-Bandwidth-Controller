@@ -1,11 +1,16 @@
 import subprocess
 import os
 import sys
+import webview
+import clr_loader
 
 def build():
     print("==================================================")
     print("Building Standalone Process Network Bandwidth Controller.exe (v2.0)")
     print("==================================================")
+
+    webview_dir = os.path.dirname(webview.__file__)
+    clr_dir = os.path.dirname(clr_loader.__file__)
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
@@ -17,6 +22,10 @@ def build():
         "--hidden-import", "PIL",
         "--hidden-import", "history_db",
         "--hidden-import", "sqlite3",
+        "--collect-all", "webview",
+        "--collect-all", "clr_loader",
+        "--add-data", f"{webview_dir};webview",
+        "--add-data", f"{clr_dir};clr_loader",
         "--add-data", "static;static",
         "--add-data", "qos_rules.json;.",
         "--name", "Process Network Bandwidth Controller",

@@ -1252,3 +1252,297 @@ input[type="number"]:focus, .select-input:focus {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ==========================================================================
+   v3.0 SUPERCHARGED SUITE STYLES (Cyber Map, Diagnostics, Sockets)
+   ========================================================================== */
+.modal-card.modal-xl {
+  width: 1040px;
+  max-width: 95vw;
+}
+
+.latency-pill {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.latency-fast { background: rgba(0, 245, 212, 0.15); color: var(--accent-emerald); border: 1px solid rgba(0, 245, 212, 0.3); }
+.latency-med { background: rgba(255, 190, 11, 0.15); color: var(--accent-amber); border: 1px solid rgba(255, 190, 11, 0.3); }
+.latency-slow { background: rgba(255, 0, 84, 0.15); color: var(--accent-danger); border: 1px solid rgba(255, 0, 84, 0.3); }
+
+.geo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-card);
+}
+
+.threat-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+.threat-danger { background: var(--accent-danger); color: #FFFFFF; animation: pulseGlow 1.5s infinite; }
+.threat-safe { background: rgba(0, 245, 212, 0.1); color: var(--accent-emerald); }
+
+.btn-kill-socket {
+  background: rgba(255, 0, 84, 0.1);
+  border: 1px solid rgba(255, 0, 84, 0.3);
+  color: var(--accent-danger);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+.btn-kill-socket:hover {
+  background: var(--accent-danger);
+  color: #FFFFFF;
+  box-shadow: 0 0 8px rgba(255, 0, 84, 0.5);
+}
+
+/* Global Cyber Map Layout */
+.map-layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 1024px) {
+  .map-layout { grid-template-columns: 1fr; }
+}
+
+.map-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-glow-cyan);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  backdrop-filter: var(--glass-blur);
+  box-shadow: 0 0 30px rgba(0, 242, 254, 0.08);
+}
+.world-map-svg-wrap {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 242, 254, 0.2);
+  margin-top: 15px;
+}
+.neon-world-map {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.map-continent {
+  fill: #131E35;
+  stroke: rgba(0, 242, 254, 0.25);
+  stroke-width: 1.5;
+  transition: all 0.3s ease;
+}
+.map-continent:hover {
+  fill: #1A2845;
+}
+.map-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 0.75rem;
+  color: var(--text-sub);
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 4px;
+}
+.dot-home { background: var(--accent-emerald); box-shadow: 0 0 6px var(--accent-emerald); }
+.dot-cdn { background: var(--accent-cyan); box-shadow: 0 0 6px var(--accent-cyan); }
+.dot-foreign { background: var(--accent-violet); box-shadow: 0 0 6px var(--accent-violet); }
+
+.active-dest-list {
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.dest-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+.dest-card:hover {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 242, 254, 0.04);
+}
+.dest-info-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dest-name { font-weight: 700; color: #FFFFFF; font-size: 0.85rem; }
+.dest-sub { font-size: 0.75rem; color: var(--text-sub); font-family: var(--font-mono); }
+
+/* Diagnostic Toolbox Layout */
+.health-card {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.08) 0%, rgba(157, 78, 221, 0.08) 100%);
+  border: 1px solid var(--border-glow-cyan);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: var(--glass-blur);
+}
+.health-icon-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.health-icon {
+  width: 36px;
+  height: 36px;
+  color: var(--accent-cyan);
+}
+.health-sub {
+  color: var(--text-sub);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+.health-metrics {
+  display: flex;
+  gap: 16px;
+}
+.health-metric-box {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  text-align: right;
+}
+.metric-label { font-size: 0.65rem; color: var(--text-sub); display: block; }
+.metric-val { font-size: 1rem; font-weight: 800; color: var(--accent-cyan); font-family: var(--font-mono); }
+
+.diag-tools-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 1024px) {
+  .diag-tools-grid { grid-template-columns: 1fr; }
+}
+
+.diag-tool-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  backdrop-filter: var(--glass-blur);
+}
+.tool-header {
+  margin-bottom: 16px;
+}
+.tool-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+.tool-input-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.tool-input-row input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+.tool-input-row input:focus {
+  border-color: var(--accent-cyan);
+  outline: none;
+}
+
+/* DNS Benchmark List */
+.dns-benchmark-results {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  min-height: 220px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+.dns-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.dns-row:last-child { border-bottom: none; }
+.dns-name-group { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.dns-ip { font-size: 0.75rem; color: var(--text-sub); font-family: var(--font-mono); }
+
+/* Traceroute Hop Path */
+.traceroute-results {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  min-height: 220px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+.hop-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--accent-cyan);
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+.hop-num {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: var(--accent-cyan);
+  width: 28px;
+}
+.hop-info {
+  flex: 1;
+}
+.hop-name { font-size: 0.8rem; font-weight: 700; color: #FFFFFF; }
+.hop-ip { font-size: 0.75rem; color: var(--text-sub); font-family: var(--font-mono); }
+

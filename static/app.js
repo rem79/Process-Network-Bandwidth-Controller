@@ -50,16 +50,24 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-view').forEach(view => view.classList.remove('active'));
 
   if (tabId === 'live') {
-    document.getElementById('tabLiveBtn').classList.add('active');
-    document.getElementById('viewLive').classList.add('active');
+    const btn = document.getElementById('tabLiveBtn'); if (btn) btn.classList.add('active');
+    const view = document.getElementById('viewLive'); if (view) view.classList.add('active');
   } else if (tabId === 'analytics') {
-    document.getElementById('tabAnalyticsBtn').classList.add('active');
-    document.getElementById('viewAnalytics').classList.add('active');
+    const btn = document.getElementById('tabAnalyticsBtn'); if (btn) btn.classList.add('active');
+    const view = document.getElementById('viewAnalytics'); if (view) view.classList.add('active');
     loadAnalyticsData();
   } else if (tabId === 'policies') {
-    document.getElementById('tabPoliciesBtn').classList.add('active');
-    document.getElementById('viewPolicies').classList.add('active');
+    const btn = document.getElementById('tabPoliciesBtn'); if (btn) btn.classList.add('active');
+    const view = document.getElementById('viewPolicies'); if (view) view.classList.add('active');
     renderFullPoliciesView();
+  } else if (tabId === 'map') {
+    const btn = document.getElementById('tabMapBtn'); if (btn) btn.classList.add('active');
+    const view = document.getElementById('viewMap'); if (view) view.classList.add('active');
+    loadGlobalMapData();
+  } else if (tabId === 'diagnostics') {
+    const btn = document.getElementById('tabDiagBtn'); if (btn) btn.classList.add('active');
+    const view = document.getElementById('viewDiagnostics'); if (view) view.classList.add('active');
+    loadDiagnosticsHealth();
   }
 
   if (window.lucide) lucide.createIcons();
@@ -555,9 +563,9 @@ function openConnectionsModal(pid, name) {
   const subEl = document.getElementById('connModalSub');
   const tbody = document.getElementById('connTableBody');
 
-  if (titleEl) titleEl.innerText = `Sockets: ${name} (PID: ${pid})`;
-  if (subEl) subEl.innerText = `Querying active TCP/UDP endpoints for PID ${pid}...`;
-  if (tbody) tbody.innerHTML = `<tr class="empty-row"><td colspan="4"><div class="loading-spinner"></div><p>Fetching socket table...</p></td></tr>`;
+  if (titleEl) titleEl.innerText = `Sockets & Route Telemetry: ${name} (PID: ${pid})`;
+  if (subEl) subEl.innerText = `Querying active TCP/UDP endpoints, Reverse DNS & Latency for PID ${pid}...`;
+  if (tbody) tbody.innerHTML = `<tr class="empty-row"><td colspan="8"><div class="loading-spinner"></div><p>Resolving GeoIP & Latency Telemetry...</p></td></tr>`;
   
   const modalEl = document.getElementById('connectionsModal');
   if (modalEl) modalEl.classList.add('show');
@@ -568,26 +576,100 @@ function openConnectionsModal(pid, name) {
       return res.json();
     })
     .then(data => {
-      if (subEl) subEl.innerText = `Found ${data.count || 0} active network sockets`;
+      if (subEl) subEl.innerText = `Found ${data.count || 0} active endpoints | Reverse DNS & Latency verified`;
       if (!tbody) return;
 
       if (!data.connections || data.connections.length === 0) {
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="4">No active network endpoints established.</td></tr>`;
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="8">No active network endpoints established.</td></tr>`;
         return;
       }
 
-      tbody.innerHTML = data.connections.map(c => `
-        <tr>
-          <td><span class="pid-tag ${c.type === 'TCP' ? 'tag-cyan' : 'tag-violet'}">${c.type}</span></td>
-          <td class="mono-text">${escapeHtml(c.local_address)}</td>
-          <td class="mono-text endpoint-addr">${escapeHtml(c.remote_address)}</td>
-          <td><span class="status-badge-sm status-${(c.status || 'established').toLowerCase()}">${c.status || 'ESTABLISHED'}</span></td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = data.connections.map(c => {
+        const rtt = c.latency_ms || 1.0;
+        let latClass = 'latency-fast';
+        if (rtt > 150) latClass = 'latency-slow';
+        else if (rtt > 50) latClass = 'latency-med';
+
+        const threatBadge = (c.threat && c.threat.level === 'danger')
+          ? `<span class="threat-badge threat-danger" title="${escapeHtml(c.threat.reason)}">⚠️ THREAT</span>`
+          : '';
+
+        const killBtn = (c.type === 'TCP' && c.remote_ip !== 'N/A')
+          ? `<button class="btn-kill-socket" onclick="killSocket(${pid}, '${c.local_ip}', ${c.local_port}, '${c.remote_ip}', ${c.remote_port}, this)" title="Terminate TCP connection"><i data-lucide="scissors"></i> Kill</button>`
+          : `<span class="text-sub">-</span>`;
+
+        return `
+          <tr>
+            <td><span class="pid-tag ${c.type === 'TCP' ? 'tag-cyan' : 'tag-violet'}">${c.type}</span></td>
+            <td class="mono-text">${escapeHtml(c.local_address)}</td>
+            <td class="mono-text endpoint-addr">${escapeHtml(c.remote_address)}</td>
+            <td>
+              <div class="geo-tag" title="${escapeHtml(c.rdns || c.remote_ip)}">
+                <i data-lucide="globe" style="width:12px;height:12px;"></i>
+                <span class="mono-text">${escapeHtml(c.rdns || c.remote_ip)}</span>
+                ${threatBadge}
+              </div>
+            </td>
+            <td>
+              <span class="geo-tag">
+                <span>${c.flag || '🌐'}</span>
+                <span>${escapeHtml(c.org || c.country || 'Global')}</span>
+              </span>
+            </td>
+            <td>
+              <span class="latency-pill ${latClass}">
+                <i data-lucide="zap" style="width:10px;height:10px;"></i>
+                <span>${rtt.toFixed(1)} ms</span>
+              </span>
+            </td>
+            <td><span class="status-badge-sm status-${(c.status || 'established').toLowerCase()}">${c.status || 'ESTABLISHED'}</span></td>
+            <td class="text-right">${killBtn}</td>
+          </tr>
+        `;
+      }).join('');
+
+      if (window.lucide) lucide.createIcons();
     })
     .catch(err => {
-      if (tbody) tbody.innerHTML = `<tr class="empty-row"><td colspan="4" style="color: #FF0054;">${err.message}</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="color: #FF0054;">${err.message}</td></tr>`;
     });
+}
+
+function killSocket(pid, localIp, localPort, remoteIp, remotePort, btnEl) {
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerText = "Terminating...";
+  }
+
+  fetch('/api/socket/kill', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      pid: pid,
+      local_ip: localIp,
+      local_port: parseInt(localPort, 10),
+      remote_ip: remoteIp,
+      remote_port: parseInt(remotePort, 10)
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      showToast(`Connection to ${remoteIp}:${remotePort} terminated!`, 'success');
+      if (btnEl) {
+        const row = btnEl.closest('tr');
+        if (row) row.style.opacity = '0.3';
+        btnEl.innerText = "KILLED";
+      }
+    } else {
+      showToast(data.message || "Failed to terminate socket", 'danger');
+      if (btnEl) { btnEl.disabled = false; btnEl.innerText = "Kill"; }
+    }
+  })
+  .catch(err => {
+    showToast(`Error: ${err.message}`, 'danger');
+    if (btnEl) { btnEl.disabled = false; btnEl.innerText = "Kill"; }
+  });
 }
 
 function closeConnectionsModal() {
@@ -609,6 +691,191 @@ document.addEventListener('keydown', (e) => {
     closeConnectionsModal();
   }
 });
+
+/* ==========================================================================
+   v3.0 GLOBAL CYBER MAP ENGINE
+   ========================================================================== */
+function loadGlobalMapData() {
+  const nodesGroup = document.getElementById('mapNodesGroup');
+  const destList = document.getElementById('activeDestList');
+  if (destList) destList.innerHTML = `<div class="loading-spinner"></div>`;
+
+  fetch('/api/map/connections')
+    .then(res => res.json())
+    .then(nodes => {
+      if (!nodesGroup || !destList) return;
+
+      // Coordinate projection (Equirectangular to SVG 1000x500)
+      const homeX = (126.978 + 180) * (1000 / 360);
+      const homeY = (90 - 37.566) * (500 / 180);
+
+      let svgHtml = `
+        <!-- Home Node (Korea) -->
+        <circle cx="${homeX}" cy="${homeY}" r="6" fill="#00F5D4" filter="url(#glowFilter)"/>
+        <circle cx="${homeX}" cy="${homeY}" r="14" fill="none" stroke="#00F5D4" stroke-width="1.5" opacity="0.6">
+          <animate attributeName="r" values="6;22;6" dur="2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.8;0.0;0.8" dur="2s" repeatCount="indefinite"/>
+        </circle>
+      `;
+
+      if (nodes.length === 0) {
+        destList.innerHTML = `<p class="empty-text">No active outbound internet sessions detected.</p>`;
+        nodesGroup.innerHTML = svgHtml;
+        return;
+      }
+
+      destList.innerHTML = nodes.map(n => `
+        <div class="dest-card">
+          <div class="dest-info-left">
+            <span class="dest-name">${n.flag || '🌐'} ${escapeHtml(n.org || n.rdns || n.ip)}</span>
+            <span class="dest-sub">${n.proc_name} &bull; ${n.ip}:${n.port}</span>
+          </div>
+          <span class="latency-pill latency-${n.latency_ms > 150 ? 'slow' : (n.latency_ms > 50 ? 'med' : 'fast')}">
+            ${n.latency_ms.toFixed(1)} ms
+          </span>
+        </div>
+      `).join('');
+
+      nodes.forEach((n, idx) => {
+        const targetX = (n.lon + 180) * (1000 / 360);
+        const targetY = (90 - n.lat) * (500 / 180);
+        const midX = (homeX + targetX) / 2;
+        const midY = Math.min(homeY, targetY) - 40;
+
+        const pathD = `M${homeX},${homeY} Q${midX},${midY} ${targetX},${targetY}`;
+        const nodeColor = n.country === 'KR' ? '#00F2FE' : '#9D4EDD';
+
+        svgHtml += `
+          <!-- Arc Line -->
+          <path d="${pathD}" fill="none" stroke="url(#cyberLineGrad)" stroke-width="1.8" stroke-dasharray="6,4" opacity="0.7">
+            <animate attributeName="stroke-dashoffset" values="40;0" dur="${1.5 + (idx % 3) * 0.5}s" repeatCount="indefinite"/>
+          </path>
+          <!-- Remote Node -->
+          <circle cx="${targetX}" cy="${targetY}" r="4" fill="${nodeColor}" filter="url(#glowFilter)"/>
+        `;
+      });
+
+      nodesGroup.innerHTML = svgHtml;
+    })
+    .catch(err => {
+      if (destList) destList.innerHTML = `<p class="empty-text" style="color:#FF0054;">Failed to load map: ${err.message}</p>`;
+    });
+}
+
+/* ==========================================================================
+   v3.0 DIAGNOSTIC TOOLBOX ENGINE (nslookup, Traceroute, Health)
+   ========================================================================== */
+function loadDiagnosticsHealth() {
+  fetch('/api/diagnostics/health')
+    .then(res => res.json())
+    .then(data => {
+      const ifaceEl = document.getElementById('metricInterface');
+      const sigEl = document.getElementById('metricSignal');
+      const gwEl = document.getElementById('metricGateway');
+      const subEl = document.getElementById('healthSub');
+
+      if (ifaceEl) ifaceEl.innerText = data.interface || 'Ethernet / LAN';
+      if (sigEl) sigEl.innerText = `${data.signal_pct}%`;
+      if (gwEl) gwEl.innerText = `~${data.gateway_rtt_ms.toFixed(1)} ms`;
+      if (subEl) subEl.innerText = data.diagnosis || 'Local network active';
+    })
+    .catch(err => console.error("Health check error:", err));
+}
+
+function executeNslookup() {
+  const inputEl = document.getElementById('nslookupInput');
+  const target = inputEl ? inputEl.value.trim() : 'netflix.com';
+  const resEl = document.getElementById('dnsBenchmarkResults');
+  if (!target || !resEl) return;
+
+  resEl.innerHTML = `<div class="loading-spinner"></div><p style="text-align:center;font-size:0.8rem;color:var(--text-sub);">Querying DNS providers (KT, SK, LG, Cloudflare, Google)...</p>`;
+
+  fetch('/api/diagnostics/nslookup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domain: target })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.error) {
+      resEl.innerHTML = `<p class="empty-text" style="color:#FF0054;">${escapeHtml(data.error)}</p>`;
+      return;
+    }
+
+    let recordsHtml = '';
+    if (data.records && data.records.length > 0) {
+      recordsHtml = `
+        <div style="margin-bottom:12px;padding:8px 10px;background:rgba(0,242,254,0.05);border-radius:6px;border:1px solid rgba(0,242,254,0.2);">
+          <span style="font-size:0.75rem;color:var(--accent-cyan);font-weight:700;">RESOLVED A / AAAA IP:</span>
+          <span class="mono-text" style="font-size:0.85rem;color:#FFFFFF;margin-left:8px;">${data.records.map(r => `${r.flag} ${r.ip}`).join(', ')}</span>
+        </div>
+      `;
+    }
+
+    const benchHtml = (data.benchmarks || []).map((b, idx) => {
+      const isFastest = idx === 0 && b.status === 'OK';
+      return `
+        <div class="dns-row">
+          <div class="dns-name-group">
+            <span>${b.flag}</span>
+            <div>
+              <span style="font-weight:700;color:#FFFFFF;">${escapeHtml(b.provider)}</span>
+              ${isFastest ? '<span class="status-badge-sm status-established" style="margin-left:6px;">FASTEST ⚡</span>' : ''}
+              <div class="dns-ip">${b.server_ip} &bull; ${b.type}</div>
+            </div>
+          </div>
+          <span class="latency-pill latency-${b.latency_ms > 100 ? 'slow' : (b.latency_ms > 40 ? 'med' : 'fast')}">
+            ${b.status === 'OK' ? `${b.latency_ms.toFixed(1)} ms` : b.status}
+          </span>
+        </div>
+      `;
+    }).join('');
+
+    resEl.innerHTML = recordsHtml + benchHtml;
+  })
+  .catch(err => {
+    resEl.innerHTML = `<p class="empty-text" style="color:#FF0054;">Lookup error: ${err.message}</p>`;
+  });
+}
+
+function executeTraceroute() {
+  const inputEl = document.getElementById('tracerouteInput');
+  const target = inputEl ? inputEl.value.trim() : '8.8.8.8';
+  const resEl = document.getElementById('tracerouteResults');
+  if (!target || !resEl) return;
+
+  resEl.innerHTML = `<div class="loading-spinner"></div><p style="text-align:center;font-size:0.8rem;color:var(--text-sub);">Tracing router hops to ${escapeHtml(target)} (10-15s)...</p>`;
+
+  fetch('/api/diagnostics/traceroute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target: target })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.error || !data.hops || data.hops.length === 0) {
+      resEl.innerHTML = `<p class="empty-text" style="color:#FF0054;">${escapeHtml(data.error || 'Traceroute timed out.')}</p>`;
+      return;
+    }
+
+    resEl.innerHTML = data.hops.map(h => `
+      <div class="hop-row">
+        <span class="hop-num">#${h.hop}</span>
+        <span style="font-size:1.1rem;">${h.flag || '🌐'}</span>
+        <div class="hop-info">
+          <div class="hop-name">${escapeHtml(h.org || h.rdns || h.ip)}</div>
+          <div class="hop-ip">${h.ip} &bull; ${escapeHtml(h.rdns || 'Backbone Node')}</div>
+        </div>
+        <span class="latency-pill latency-${h.rtt_ms > 150 ? 'slow' : (h.rtt_ms > 50 ? 'med' : 'fast')}">
+          ${h.rtt_ms.toFixed(1)} ms
+        </span>
+      </div>
+    `).join('');
+  })
+  .catch(err => {
+    resEl.innerHTML = `<p class="empty-text" style="color:#FF0054;">Traceroute error: ${err.message}</p>`;
+  });
+}
 
 /* Analytics Data Loader & Sorting */
 function sortHistoryByHeader(key) {

@@ -6,6 +6,7 @@ All notable changes to the Process Network Bandwidth Controller project will be 
 
 ### Added
 - **Direct Numeric Speed Limit Input**: Added numeric input fields and unit selection dropdowns (`KB/s`, `MB/s`, `GB/s`) supporting fine-grained bandwidth limits from **1 KB/s up to 100 GB/s** on both the dashboard Quick Control card and the Custom QoS modal.
+- **Active QoS Rule Adjustment**: Added an **`Adjust Limit`** action button to each configured policy card in the Active QoS Rules tab, allowing users to modify existing limits, presets, and priorities on the fly.
 - **Micro-Bandwidth Presets**: Added 10 KB/s, 100 KB/s, and 500 KB/s ultra-low speed limit presets for extreme traffic throttling tests.
 
 ## [2.1.0] - 2026-08-25

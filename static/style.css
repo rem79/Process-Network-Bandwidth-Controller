@@ -894,14 +894,44 @@ body {
 .priority-normal { background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); }
 .priority-low { background: rgba(100, 116, 139, 0.2); color: var(--text-sub); }
 
+.policy-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn-sm-edit {
+  background: rgba(0, 242, 254, 0.1);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+.btn-sm-edit:hover {
+  background: var(--accent-cyan);
+  color: #070A12;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
+}
+
 .btn-sm-danger {
   background: transparent;
   border: 1px solid rgba(255, 0, 84, 0.3);
   color: var(--accent-danger);
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 4px;
   font-size: 0.75rem;
+  font-weight: 600;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
 }
 .btn-sm-danger:hover {
   background: var(--accent-danger);

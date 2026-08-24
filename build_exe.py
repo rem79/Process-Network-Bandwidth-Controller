@@ -6,7 +6,7 @@ import clr_loader
 
 def build():
     print("==================================================")
-    print("Building Standalone Process Network Bandwidth Controller.exe (v2.0)")
+    print("Building Standalone Process Network Bandwidth Controller.exe (v3.0 Suite)")
     print("==================================================")
 
     webview_dir = os.path.dirname(webview.__file__)
@@ -22,6 +22,8 @@ def build():
         "--hidden-import", "PIL",
         "--hidden-import", "history_db",
         "--hidden-import", "sqlite3",
+        "--hidden-import", "network_inspector",
+        "--hidden-import", "diagnostics",
         "--collect-all", "webview",
         "--collect-all", "clr_loader",
         "--add-data", f"{webview_dir};webview",

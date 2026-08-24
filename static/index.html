@@ -38,6 +38,9 @@
         <div class="status-badge" id="adminStatus">
           <i data-lucide="shield-alert"></i> <span id="adminText">Checking Privileges...</span>
         </div>
+        <button class="status-badge btn-playbook-trigger" onclick="openPlaybookModal()" title="SAP/TMS 및 실무 네트워크 장애 진단 매뉴얼 & 활용 팁">
+          <i data-lucide="book-open"></i> <span>실무 진단 매뉴얼 & 팁</span>
+        </button>
         <div class="status-badge live-pulse" id="connectionStatus">
           <span class="pulse-dot"></span> <span id="connText">CONNECTING</span>
         </div>
@@ -556,6 +559,90 @@
 
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeConnectionsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Enterprise Troubleshooting Playbook & Manual Modal -->
+  <div class="modal-backdrop" id="playbookModal" onclick="onBackdropClick(event, 'playbookModal')">
+    <div class="modal-card modal-xl playbook-modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-icon"><i data-lucide="book-open"></i></div>
+          <div>
+            <h3>📖 실무 네트워크 장애 진단 매뉴얼 & 활용 팁</h3>
+            <p class="modal-sub">SAP / TMS 해외 연동 장애, 사내 네트워크 렉 원인 규명 및 해결 SOP</p>
+          </div>
+        </div>
+        <button class="btn-close" onclick="closePlaybookModal()"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body playbook-body">
+        <!-- Section 1 -->
+        <div class="playbook-section">
+          <div class="section-badge"><i data-lucide="truck"></i> 시나리오 1: SAP / TMS 연동 송장 출력 오류 완벽 대응 (4단계)</div>
+          <div class="playbook-grid-steps">
+            <div class="step-card">
+              <div class="step-num">STEP 1</div>
+              <h4>내 PC (로컬 프로세스) 점검</h4>
+              <p>• <code>Real-time Live Sentinel</code> 탭에서 <code>TMS.exe</code> 및 <code>spoolsv.exe</code>(프린터 스풀러) 확인<br>• CPU 100% 프리징 또는 실수로 대역폭 제한(Limit)이 걸려있는지 점검</p>
+            </div>
+            <div class="step-card">
+              <div class="step-num">STEP 2</div>
+              <h4>중국/해외 서버 소켓 상태 점검</h4>
+              <p>• <code>TMS.exe</code> 행의 <b>[.. sockets]</b> 버튼 클릭<br>• <code>SYN_SENT</code>: 서버 다운, VPN 끊김 또는 방화벽 차단<br>• <code>LATENCY</code>가 300ms 이상(빨간색)이면 국제망 회선 지연</p>
+            </div>
+            <div class="step-card">
+              <div class="step-num">STEP 3</div>
+              <h4>서버 재부팅 대신 [✂️ Kill] 세션 리셋</h4>
+              <p>• 중국 서버를 통째로 껐다 켤 필요 없이, 꼬여있는 소켓의 <b>[✂️ Kill]</b> 버튼을 누르면 1초 만에 세션이 초기화(TCP Reset)되어 송장이 즉시 출력됩니다.</p>
+            </div>
+            <div class="step-card">
+              <div class="step-num">STEP 4</div>
+              <h4>Traceroute 국제망 병목 추적</h4>
+              <p>• <code>Diagnostic Toolbox</code> 탭의 <b>Visual Traceroute</b>에 중국 서버 IP 입력<br>• 국내 구간 vs 한중 해저케이블 vs 중국 통신사 중 어디서 패킷 손실이 나는지 입증</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2 -->
+        <div class="playbook-section">
+          <div class="section-badge"><i data-lucide="zap"></i> 시나리오 2: 웹사이트 / 사내 ERP가 느릴 때 (DNS vs 서버 판별)</div>
+          <div class="playbook-tips-list">
+            <div class="tip-item">
+              <span class="tip-bullet">💡</span>
+              <div>
+                <strong>NSLOOKUP & DNS 벤치마크 활용:</strong>
+                <p><code>Diagnostic Toolbox</code>에서 도메인을 입력하여 <b>KT, SK, LG, Cloudflare, Google</b> 중 어느 DNS가 가장 빠른지 비교하세요. 응답이 빠른 DNS로 PC 네트워크 설정을 변경하면 첫 페이지 로딩 속도가 2~3배 빨라집니다.</p>
+              </div>
+            </div>
+            <div class="tip-item">
+              <span class="tip-bullet">💡</span>
+              <div>
+                <strong>공유기(Wi-Fi) 문제 vs 상대 서버 문제 구분:</strong>
+                <p>상단의 <code>LOCAL NETWORK & ADAPTER DIAGNOSTIC</code>에서 <b>GATEWAY RTT가 5ms 이하</b>라면 공유기와 내 PC는 최적 상태입니다. 이 상태에서 느리다면 100% 상대방 서버 또는 통신사 회선 문제입니다.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3 -->
+        <div class="playbook-section">
+          <div class="section-badge"><i data-lucide="shield-alert"></i> 시나리오 3: 백그라운드 트래픽 독식 및 보안 감시</div>
+          <div class="playbook-tips-list">
+            <div class="tip-item">
+              <span class="tip-bullet">🛡️</span>
+              <div>
+                <strong>글로벌 사이버 레이더 감시:</strong>
+                <p><code>Global Cyber Map</code> 탭에서 내 컴퓨터가 현재 어느 국가, 어느 클라우드 서버(AWS, Google 등)와 실시간 연결을 맺고 있는지 한눈에 관제하고 이상 해외 통신을 즉시 적발하세요.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-primary" onclick="closePlaybookModal()"><i data-lucide="check"></i> 확인 완료</button>
       </div>
     </div>
   </div>

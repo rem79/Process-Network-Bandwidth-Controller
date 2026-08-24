@@ -1,6 +1,21 @@
 # Changelog
 
-All notable changes to the Process Network Bandwidth Controller project will be documented in this file.
+All notable changes to the **Process Network Bandwidth Controller** will be documented in this file.
+
+## [3.0.0] - 2026-08-25 (Next-Gen Network Sentinel Suite)
+### Added
+- **Supercharged Sockets Inspector (Telemetry & Route Inspector):**
+  - **Reverse DNS & GeoIP:** Real-time domain resolution, country flags (🇰🇷, 🇺🇸, 🇯🇵, 🇩🇪 등), and CDN/ASN organization mapping (Netflix, Cloudflare, AWS, Google).
+  - **Live Ping & Latency Telemetry:** Real-time TCP connect RTT (ms) with fast (🟢), medium (🟡), slow (🔴) status pills.
+  - **Socket-Level Termination (`[✂️ Kill Socket]`):** Direct TCP RST / connection teardown to drop bugged/malicious sockets without terminating host processes.
+  - **Threat Intelligence Badging:** Heuristic scanning for suspicious ports (Metasploit, Mining Stratum, Tor, IRC).
+- **Tab 4: 🌍 Global Cyber Map:**
+  - Interactive Cyberpunk neon world map with real-time arc line animations connecting local origins to global cloud/CDN endpoints.
+  - Active Outbound Destinations side-panel with latency metrics.
+- **Tab 5: 🛠️ Diagnostic Toolbox:**
+  - **Multi-DNS nslookup & Benchmark:** Instant domain propagation queries and comparative latency benchmarks across top DNS providers (KT, SK, LG, Cloudflare, Google, Quad9).
+  - **Visual Hop Traceroute:** Step-by-step router hop tracing with GeoIP flags, router names, and latency hops.
+  - **Local Wi-Fi / LAN Quality Diagnostic:** Wi-Fi signal percentage, gateway ping latency, and local vs server bottleneck analyzer.
 
 ## [2.3.0] - 2026-08-25
 

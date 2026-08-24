@@ -22,9 +22,11 @@ def sanitize_policy_name(name: str) -> str:
 
 def sanitize_exe_target(exe_str: str) -> str:
     """
-    Sanitizes executable match string or path.
+    Sanitizes executable match string or path for NetQosPolicy matching, safely preserving path backslashes.
     """
-    # Strip any potential command injection characters
+    if not exe_str or exe_str == "*":
+        return "*"
+    # Strip dangerous injection characters while preserving valid path separators
     return exe_str.replace('"', '').replace("'", "").replace('`', '').replace('$', '').strip()
 
 class QoSManager:
@@ -98,8 +100,9 @@ class QoSManager:
         if limit_kbps <= 0:
             return self.remove_limit(target_name, save_state=save_state)
 
-        clean_target = sanitize_policy_name(target_name)
         clean_exe = sanitize_exe_target(app_exe or target_name)
+        display_target = os.path.basename(target_name) if target_name.lower() != "global" else "Global"
+        clean_target = sanitize_policy_name(display_target)
         bps = int(limit_kbps * 1024 * 8) # Convert KB/s to bits per second
 
         # First remove existing policy to avoid duplicate name collision
@@ -112,10 +115,11 @@ class QoSManager:
         elif priority.lower() == "low":
             dscp_param = "-DSCPAction 10" # Lower priority
 
-        if clean_exe == "*" or target_name.lower() == "global":
+        match_exe = os.path.basename(clean_exe) if clean_exe != "*" else "*"
+        if match_exe == "*" or target_name.lower() == "global":
             ps_cmd = f"New-NetQosPolicy -Name '{clean_target}' -ThrottleRateActionBitsPerSecond {bps} {dscp_param} -PolicyStore ActiveStore -Confirm:$false"
         else:
-            ps_cmd = f"New-NetQosPolicy -Name '{clean_target}' -AppPathNameMatchCondition '{clean_exe}' -ThrottleRateActionBitsPerSecond {bps} {dscp_param} -PolicyStore ActiveStore -Confirm:$false"
+            ps_cmd = f"New-NetQosPolicy -Name '{clean_target}' -AppPathNameMatchCondition '{match_exe}' -ThrottleRateActionBitsPerSecond {bps} {dscp_param} -PolicyStore ActiveStore -Confirm:$false"
 
         success, msg = self._run_powershell(ps_cmd)
         rule_data = {

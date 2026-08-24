@@ -4,6 +4,9 @@ All notable changes to the Process Network Bandwidth Controller project will be 
 
 ## [2.1.0] - 2026-08-25
 
+### Fixed
+- **Windows QoS Policy Throttling Match**: Fixed Windows `NetQosPolicy` `-AppPathNameMatchCondition` to pass pure executable filenames (e.g. `chrome.exe` instead of malformed absolute paths), ensuring Windows QoS engine correctly throttles Chrome/Netflix streaming traffic.
+
 ### Changed
 - **Global Speed Limit Presets**: Updated quick preset buttons on the dashboard to **10 MB/s**, **100 MB/s**, **1 GB/s**, and **Off** for high-speed network environments.
 - **Traffic Analytics QoS Creation**: Added direct QoS Limit creation buttons to both **Top Bandwidth Consumers (24h)** list items and **Daily Data Usage Summary** table rows.

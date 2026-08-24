@@ -2,10 +2,11 @@
 
 All notable changes to the Process Network Bandwidth Controller project will be documented in this file.
 
-## [2.2.0] - 2026-08-25
+## [2.3.0] - 2026-08-25
 
 ### Added
-- **Direct Numeric Speed Limit Input**: Added numeric input fields and unit selection dropdowns (`KB/s`, `MB/s`, `GB/s`) supporting fine-grained bandwidth limits from **1 KB/s up to 100 GB/s** on both the dashboard Quick Control card and the Custom QoS modal.
+- **Interactive Bidirectional Table Header Sorting**: Added interactive click sorting with ascending (▲) and descending (▼) toggle icons to all column headers across both the **Live Process Sentinel Table** (`APPLICATION`, `PID`, `CONNECTIONS`, `DOWNLOAD SPEED`, `UPLOAD SPEED`, `CPU / RAM`, `LIMIT STATUS`) and the **Daily Analytics History Table** (`DATE`, `APPLICATION`, `UPLOAD`, `DOWNLOAD`, `TOTAL DATA`).
+- **Non-blocking Neon Toast Notification System**: Replaced all blocking browser modal alerts with responsive cyber-neon toast notifications and full UI crash protection.
 - **Active QoS Rule Adjustment**: Added an **`Adjust Limit`** action button to each configured policy card in the Active QoS Rules tab, allowing users to modify existing limits, presets, and priorities on the fly.
 - **Micro-Bandwidth Presets**: Added 10 KB/s, 100 KB/s, and 500 KB/s ultra-low speed limit presets for extreme traffic throttling tests.
 

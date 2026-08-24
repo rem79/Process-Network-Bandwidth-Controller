@@ -662,6 +662,35 @@ select option:checked {
   border-bottom: 1px solid var(--border-card);
   background: rgba(10, 15, 29, 0.4);
 }
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+.sortable-th:hover {
+  color: var(--accent-cyan) !important;
+  background: rgba(0, 242, 254, 0.08) !important;
+}
+.th-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sort-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.35;
+  transition: all 0.2s ease;
+}
+.sortable-th:hover .sort-icon {
+  opacity: 0.8;
+  color: var(--accent-cyan);
+}
+.sort-icon.active {
+  opacity: 1;
+  color: var(--accent-cyan);
+  filter: drop-shadow(0 0 5px rgba(0, 242, 254, 0.6));
+}
 .antigravity-table td {
   padding: 14px 20px;
   font-size: 0.85rem;

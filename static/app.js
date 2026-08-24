@@ -488,8 +488,14 @@ function loadAnalyticsData() {
             <div class="top-total">${item.total_traffic_formatted}</div>
             <div class="top-breakdown">↓ ${item.total_down_formatted} / ↑ ${item.total_up_formatted}</div>
           </div>
+          <div class="top-action">
+            <button class="btn-action-limit" title="Set QoS Bandwidth Limit" onclick="openLimitModal('${escapeHtml(item.exe || item.name)}', '${escapeHtml(item.name)}')">
+              <i data-lucide="sliders"></i> Limit
+            </button>
+          </div>
         </div>
       `).join('');
+      if (window.lucide) lucide.createIcons();
     })
     .catch(err => {
       topList.innerHTML = `<p class="empty-text error-text">Failed to load analytics: ${err}</p>`;
@@ -501,7 +507,7 @@ function loadAnalyticsData() {
     .then(rows => {
       const tbody = document.getElementById('dailyHistoryBody');
       if (rows.length === 0) {
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="5">No daily traffic logs recorded yet.</td></tr>`;
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="6">No daily traffic logs recorded yet.</td></tr>`;
         return;
       }
       tbody.innerHTML = rows.map(r => `
@@ -516,11 +522,17 @@ function loadAnalyticsData() {
           <td class="speed-text up">${r.up_formatted}</td>
           <td class="speed-text down">${r.down_formatted}</td>
           <td><strong>${r.total_formatted}</strong></td>
+          <td class="text-right">
+            <button class="btn-action-limit" title="Set QoS Bandwidth Limit" onclick="openLimitModal('${escapeHtml(r.exe || r.name)}', '${escapeHtml(r.name)}')">
+              <i data-lucide="sliders"></i> Limit
+            </button>
+          </td>
         </tr>
       `).join('');
+      if (window.lucide) lucide.createIcons();
     })
     .catch(err => {
-      document.getElementById('dailyHistoryBody').innerHTML = `<tr class="empty-row"><td colspan="5">Error: ${err}</td></tr>`;
+      document.getElementById('dailyHistoryBody').innerHTML = `<tr class="empty-row"><td colspan="6">Error: ${err}</td></tr>`;
     });
 }
 

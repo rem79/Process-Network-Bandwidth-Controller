@@ -152,7 +152,7 @@ def main():
     logging.info("Creating PyWebView desktop window...")
     app_window = webview.create_window(
         title="Process Network Bandwidth Controller",
-        url="http://127.0.0.1:8000",
+        url=f"http://127.0.0.1:8000?v={int(time.time())}",
         width=1340,
         height=880,
         min_size=(1024, 700),
@@ -162,8 +162,8 @@ def main():
 
     app_window.events.closing += on_closing
 
-    logging.info("Starting PyWebView event loop...")
-    webview.start(private_mode=False)
+    logging.info("Starting PyWebView event loop with private_mode...")
+    webview.start(private_mode=True)
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()

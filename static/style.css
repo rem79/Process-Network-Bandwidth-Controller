@@ -710,6 +710,32 @@ body {
   font-size: 0.75rem;
   color: var(--text-sub);
 }
+.top-action {
+  margin-left: 6px;
+}
+.btn-action-limit {
+  background: rgba(0, 242, 254, 0.1);
+  color: var(--accent-cyan);
+  border: 1px solid var(--border-glow-cyan);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.btn-action-limit i {
+  width: 14px;
+  height: 14px;
+}
+.btn-action-limit:hover {
+  background: var(--accent-cyan);
+  color: #070A12;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.4);
+}
 
 /* Policies View */
 .policies-container {

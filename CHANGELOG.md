@@ -6,6 +6,7 @@ All notable changes to the Process Network Bandwidth Controller project will be 
 
 ### Changed
 - **Global Speed Limit Presets**: Updated quick preset buttons on the dashboard to **10 MB/s**, **100 MB/s**, **1 GB/s**, and **Off** for high-speed network environments.
+- **Traffic Analytics QoS Creation**: Added direct QoS Limit creation buttons to both **Top Bandwidth Consumers (24h)** list items and **Daily Data Usage Summary** table rows.
 
 ## [2.0.0] - 2026-08-25
 

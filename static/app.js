@@ -394,7 +394,9 @@ function openLimitModalFromDataset(el) {
   const target = el.getAttribute('data-target') || '';
   const name = el.getAttribute('data-name') || target;
   const exe = el.getAttribute('data-exe') || target;
-  openLimitModal(target, name, exe);
+  const kbps = parseInt(el.getAttribute('data-kbps'), 10) || 0;
+  const priority = el.getAttribute('data-priority') || 'normal';
+  openLimitModal(target, name, exe, kbps, priority);
 }
 
 function closeLimitModal() {
@@ -620,9 +622,14 @@ function renderFullPoliciesView() {
         </div>
         <div class="policy-card-bottom">
           <span class="priority-tag priority-${item.priority || 'normal'}">Priority: ${(item.priority || 'normal').toUpperCase()}</span>
-          <button class="btn-sm-danger" onclick="removeLimit('${escapeHtml(item.target)}'); setTimeout(renderFullPoliciesView, 400);">
-            <i data-lucide="trash"></i> Delete
-          </button>
+          <div class="policy-actions">
+            <button class="btn-sm-edit" title="Adjust Speed Limit" data-target="${escapeHtml(item.target)}" data-name="${escapeHtml(item.target)}" data-exe="${escapeHtml(item.app_exe || item.target)}" data-kbps="${item.kbps || 0}" data-priority="${escapeHtml(item.priority || 'normal')}" onclick="openLimitModalFromDataset(this)">
+              <i data-lucide="sliders"></i> Adjust Limit
+            </button>
+            <button class="btn-sm-danger" title="Remove QoS Policy" onclick="removeLimit('${escapeHtml(item.target)}'); setTimeout(renderFullPoliciesView, 400);">
+              <i data-lucide="trash"></i> Delete
+            </button>
+          </div>
         </div>
       </div>
     `;

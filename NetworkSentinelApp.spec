@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('C:\\Users\\ilios\\AppData\\Roaming\\Python\\Python312\\site-packages\\webview', 'webview'), ('C:\\Users\\ilios\\AppData\\Roaming\\Python\\Python312\\site-packages\\clr_loader', 'clr_loader'), ('static', 'static'), ('qos_rules.json', '.')]
 binaries = []
-hiddenimports = ['pystray', 'PIL', 'history_db', 'sqlite3']
+hiddenimports = ['pystray', 'PIL', 'history_db', 'sqlite3', 'network_inspector', 'diagnostics']
 tmp_ret = collect_all('webview')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('clr_loader')

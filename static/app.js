@@ -677,10 +677,22 @@ function closeConnectionsModal() {
   if (modalEl) modalEl.classList.remove('show');
 }
 
+function openPlaybookModal() {
+  const modalEl = document.getElementById('playbookModal');
+  if (modalEl) modalEl.classList.add('show');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closePlaybookModal() {
+  const modalEl = document.getElementById('playbookModal');
+  if (modalEl) modalEl.classList.remove('show');
+}
+
 function onBackdropClick(event, modalId) {
   if (event.target && event.target.id === modalId) {
     if (modalId === 'connectionsModal') closeConnectionsModal();
     if (modalId === 'limitModal') closeLimitModal();
+    if (modalId === 'playbookModal') closePlaybookModal();
   }
 }
 
@@ -689,6 +701,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeLimitModal();
     closeConnectionsModal();
+    closePlaybookModal();
   }
 });
 

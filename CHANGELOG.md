@@ -2,6 +2,11 @@
 
 All notable changes to the Process Network Bandwidth Controller project will be documented in this file.
 
+## [2.1.0] - 2026-08-25
+
+### Changed
+- **Global Speed Limit Presets**: Updated quick preset buttons on the dashboard to **10 MB/s**, **100 MB/s**, **1 GB/s**, and **Off** for high-speed network environments.
+
 ## [2.0.0] - 2026-08-25
 
 ### Added

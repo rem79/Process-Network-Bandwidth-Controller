@@ -159,7 +159,7 @@
 
             <div class="sort-selector">
               <i data-lucide="arrow-down-up"></i>
-              <select id="sortSelect" onchange="renderProcesses()">
+              <select id="sortSelect" onchange="onSortSelectChange()">
                 <option value="traffic">Total Traffic (Desc)</option>
                 <option value="down">Download Speed</option>
                 <option value="up">Upload Speed</option>
@@ -176,13 +176,27 @@
           <table class="antigravity-table">
             <thead>
               <tr>
-                <th>APPLICATION</th>
-                <th>PID</th>
-                <th>CONNECTIONS</th>
-                <th>DOWNLOAD SPEED</th>
-                <th>UPLOAD SPEED</th>
-                <th>CPU / RAM</th>
-                <th>LIMIT STATUS</th>
+                <th class="sortable-th" onclick="sortByHeader('name')" title="Sort by Application Name">
+                  <div class="th-content"><span>APPLICATION</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-name"></i></div>
+                </th>
+                <th class="sortable-th" onclick="sortByHeader('pid')" title="Sort by Process ID">
+                  <div class="th-content"><span>PID</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-pid"></i></div>
+                </th>
+                <th class="sortable-th" onclick="sortByHeader('connections')" title="Sort by Active Sockets">
+                  <div class="th-content"><span>CONNECTIONS</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-connections"></i></div>
+                </th>
+                <th class="sortable-th" onclick="sortByHeader('down')" title="Sort by Download Speed">
+                  <div class="th-content"><span>DOWNLOAD SPEED</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-down"></i></div>
+                </th>
+                <th class="sortable-th" onclick="sortByHeader('up')" title="Sort by Upload Speed">
+                  <div class="th-content"><span>UPLOAD SPEED</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-up"></i></div>
+                </th>
+                <th class="sortable-th" onclick="sortByHeader('cpu')" title="Sort by CPU / RAM Usage">
+                  <div class="th-content"><span>CPU / RAM</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-cpu"></i></div>
+                </th>
+                <th class="sortable-th" onclick="sortByHeader('limit')" title="Sort by QoS Throttling Status">
+                  <div class="th-content"><span>LIMIT STATUS</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-limit"></i></div>
+                </th>
                 <th class="text-right">ACTION</th>
               </tr>
             </thead>
@@ -230,11 +244,21 @@
             <table class="antigravity-table">
               <thead>
                 <tr>
-                  <th>DATE</th>
-                  <th>APPLICATION</th>
-                  <th>UPLOAD</th>
-                  <th>DOWNLOAD</th>
-                  <th>TOTAL DATA</th>
+                  <th class="sortable-th" onclick="sortHistoryByHeader('date')" title="Sort by Date">
+                    <div class="th-content"><span>DATE</span><i data-lucide="chevrons-up-down" class="sort-icon" id="histSortIcon-date"></i></div>
+                  </th>
+                  <th class="sortable-th" onclick="sortHistoryByHeader('name')" title="Sort by Application Name">
+                    <div class="th-content"><span>APPLICATION</span><i data-lucide="chevrons-up-down" class="sort-icon" id="histSortIcon-name"></i></div>
+                  </th>
+                  <th class="sortable-th" onclick="sortHistoryByHeader('up')" title="Sort by Upload Total">
+                    <div class="th-content"><span>UPLOAD</span><i data-lucide="chevrons-up-down" class="sort-icon" id="histSortIcon-up"></i></div>
+                  </th>
+                  <th class="sortable-th" onclick="sortHistoryByHeader('down')" title="Sort by Download Total">
+                    <div class="th-content"><span>DOWNLOAD</span><i data-lucide="chevrons-up-down" class="sort-icon" id="histSortIcon-down"></i></div>
+                  </th>
+                  <th class="sortable-th" onclick="sortHistoryByHeader('total')" title="Sort by Cumulative Traffic">
+                    <div class="th-content"><span>TOTAL DATA</span><i data-lucide="chevrons-up-down" class="sort-icon" id="histSortIcon-total"></i></div>
+                  </th>
                   <th class="text-right">ACTION</th>
                 </tr>
               </thead>

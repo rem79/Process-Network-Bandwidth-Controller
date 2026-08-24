@@ -21,6 +21,15 @@ let chartLabels = Array(chartHistoryLength).fill('');
 let currentModalTarget = '';
 let currentModalExe = '';
 
+// Live Table Sorting States
+let currentSortKey = 'traffic';
+let currentSortDir = 'desc';
+
+// History Table Sorting States
+let cachedHistoryRows = [];
+let currentHistorySortKey = 'date';
+let currentHistorySortDir = 'desc';
+
 const BROWSER_EXE_NAMES = [
   'chrome.exe', 'firefox.exe', 'msedge.exe', 'brave.exe', 'opera.exe', 'vivaldi.exe', 'whale.exe', 'safari.exe'
 ];
@@ -253,13 +262,51 @@ function setCategoryFilter(category) {
   renderProcesses();
 }
 
-function filterProcesses() {
+function onSortSelectChange() {
+  const selectVal = document.getElementById('sortSelect').value;
+  currentSortKey = selectVal;
+  currentSortDir = 'desc';
+  updateLiveSortIcons();
   renderProcesses();
 }
 
+function sortByHeader(key) {
+  if (currentSortKey === key) {
+    currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSortKey = key;
+    currentSortDir = (key === 'name') ? 'asc' : 'desc';
+  }
+
+  const sortSelect = document.getElementById('sortSelect');
+  if (sortSelect) {
+    const matchedOpt = Array.from(sortSelect.options).find(o => o.value === key);
+    if (matchedOpt) sortSelect.value = key;
+  }
+
+  updateLiveSortIcons();
+  renderProcesses();
+}
+
+function updateLiveSortIcons() {
+  const keys = ['name', 'pid', 'connections', 'down', 'up', 'cpu', 'limit'];
+  keys.forEach(k => {
+    const iconEl = document.getElementById(`sortIcon-${k}`);
+    if (!iconEl) return;
+    if (currentSortKey === k) {
+      iconEl.setAttribute('data-lucide', currentSortDir === 'asc' ? 'chevron-up' : 'chevron-down');
+      iconEl.classList.add('active');
+    } else {
+      iconEl.setAttribute('data-lucide', 'chevrons-up-down');
+      iconEl.classList.remove('active');
+    }
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
 function renderProcesses() {
-  const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
-  const sortBy = document.getElementById('sortSelect').value;
+  const searchInputEl = document.getElementById('searchInput');
+  const searchVal = searchInputEl ? searchInputEl.value.toLowerCase().trim() : '';
 
   let filtered = allProcesses.filter(p => {
     // 1. Text search
@@ -282,15 +329,22 @@ function renderProcesses() {
     return true;
   });
 
-  // Sort
+  // Dynamic Directional Sort
+  const mult = currentSortDir === 'asc' ? 1 : -1;
   filtered.sort((a, b) => {
-    if (sortBy === 'down') return b.down_speed - a.down_speed;
-    if (sortBy === 'up') return b.up_speed - a.up_speed;
-    if (sortBy === 'connections') return b.connections - a.connections;
-    if (sortBy === 'name') return a.name.localeCompare(b.name);
-    if (sortBy === 'pid') return a.pid - b.pid;
+    if (currentSortKey === 'down') return (a.down_speed - b.down_speed) * mult;
+    if (currentSortKey === 'up') return (a.up_speed - b.up_speed) * mult;
+    if (currentSortKey === 'connections') return (a.connections - b.connections) * mult;
+    if (currentSortKey === 'name') return a.name.localeCompare(b.name) * mult;
+    if (currentSortKey === 'pid') return (a.pid - b.pid) * mult;
+    if (currentSortKey === 'cpu') return (a.cpu_percent - b.cpu_percent) * mult;
+    if (currentSortKey === 'limit') {
+      const aLim = a.limit_kbps || 0;
+      const bLim = b.limit_kbps || 0;
+      return (aLim - bLim) * mult;
+    }
     // Default 'traffic'
-    return (b.down_speed + b.up_speed) - (a.down_speed + a.up_speed);
+    return ((a.down_speed + a.up_speed) - (b.down_speed + b.up_speed)) * mult;
   });
 
   document.getElementById('procCountBadge').innerText = `${filtered.length} Active`;
@@ -527,15 +581,83 @@ function closeConnectionsModal() {
   document.getElementById('connectionsModal').classList.remove('show');
 }
 
-/* Analytics Data Loader */
+/* Analytics Data Loader & Sorting */
+function sortHistoryByHeader(key) {
+  if (currentHistorySortKey === key) {
+    currentHistorySortDir = currentHistorySortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentHistorySortKey = key;
+    currentHistorySortDir = (key === 'name') ? 'asc' : 'desc';
+  }
+  updateHistorySortIcons();
+  renderDailyHistoryTable();
+}
+
+function updateHistorySortIcons() {
+  const keys = ['date', 'name', 'up', 'down', 'total'];
+  keys.forEach(k => {
+    const iconEl = document.getElementById(`histSortIcon-${k}`);
+    if (!iconEl) return;
+    if (currentHistorySortKey === k) {
+      iconEl.setAttribute('data-lucide', currentHistorySortDir === 'asc' ? 'chevron-up' : 'chevron-down');
+      iconEl.classList.add('active');
+    } else {
+      iconEl.setAttribute('data-lucide', 'chevrons-up-down');
+      iconEl.classList.remove('active');
+    }
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
+function renderDailyHistoryTable() {
+  const tbody = document.getElementById('dailyHistoryBody');
+  if (!tbody) return;
+  if (!cachedHistoryRows || cachedHistoryRows.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">No daily traffic logs recorded yet.</td></tr>`;
+    return;
+  }
+
+  const mult = currentHistorySortDir === 'asc' ? 1 : -1;
+  const sorted = [...cachedHistoryRows].sort((a, b) => {
+    if (currentHistorySortKey === 'date') return a.date.localeCompare(b.date) * mult;
+    if (currentHistorySortKey === 'name') return a.name.localeCompare(b.name) * mult;
+    if (currentHistorySortKey === 'up') return ((a.total_up_bytes || 0) - (b.total_up_bytes || 0)) * mult;
+    if (currentHistorySortKey === 'down') return ((a.total_down_bytes || 0) - (b.total_down_bytes || 0)) * mult;
+    // Default 'total'
+    return ((a.total_bytes || 0) - (b.total_bytes || 0)) * mult;
+  });
+
+  tbody.innerHTML = sorted.map(r => `
+    <tr>
+      <td><span class="pid-tag">${r.date}</span></td>
+      <td>
+        <div class="proc-info">
+          <span class="proc-name">${escapeHtml(r.name)}</span>
+          <span class="proc-path">${escapeHtml(r.exe || '')}</span>
+        </div>
+      </td>
+      <td class="speed-text up">${r.up_formatted}</td>
+      <td class="speed-text down">${r.down_formatted}</td>
+      <td><strong>${r.total_formatted}</strong></td>
+      <td class="text-right">
+        <button class="btn-action-limit" title="Set QoS Bandwidth Limit" data-target="${escapeHtml(r.name)}" data-name="${escapeHtml(r.name)}" data-exe="${escapeHtml(r.exe || r.name)}" onclick="openLimitModalFromDataset(this)">
+          <i data-lucide="sliders"></i> Limit
+        </button>
+      </td>
+    </tr>
+  `).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
 function loadAnalyticsData() {
   const topList = document.getElementById('topConsumersList');
-  topList.innerHTML = `<div class="loading-spinner"></div>`;
+  if (topList) topList.innerHTML = `<div class="loading-spinner"></div>`;
 
   // Fetch Top 24h
   fetch('/api/history/top?hours=24&limit=8')
     .then(res => res.json())
     .then(items => {
+      if (!topList) return;
       if (items.length === 0) {
         topList.innerHTML = `<p class="empty-text">No traffic history collected yet. Activity is recorded over time.</p>`;
         return;
@@ -561,41 +683,20 @@ function loadAnalyticsData() {
       if (window.lucide) lucide.createIcons();
     })
     .catch(err => {
-      topList.innerHTML = `<p class="empty-text error-text">Failed to load analytics: ${err}</p>`;
+      if (topList) topList.innerHTML = `<p class="empty-text error-text">Failed to load analytics: ${err}</p>`;
     });
 
   // Fetch Daily Breakdown
   fetch('/api/history/daily?days=7')
     .then(res => res.json())
     .then(rows => {
-      const tbody = document.getElementById('dailyHistoryBody');
-      if (rows.length === 0) {
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="6">No daily traffic logs recorded yet.</td></tr>`;
-        return;
-      }
-      tbody.innerHTML = rows.map(r => `
-        <tr>
-          <td><span class="pid-tag">${r.date}</span></td>
-          <td>
-            <div class="proc-info">
-              <span class="proc-name">${escapeHtml(r.name)}</span>
-              <span class="proc-path">${escapeHtml(r.exe || '')}</span>
-            </div>
-          </td>
-          <td class="speed-text up">${r.up_formatted}</td>
-          <td class="speed-text down">${r.down_formatted}</td>
-          <td><strong>${r.total_formatted}</strong></td>
-          <td class="text-right">
-            <button class="btn-action-limit" title="Set QoS Bandwidth Limit" data-target="${escapeHtml(r.name)}" data-name="${escapeHtml(r.name)}" data-exe="${escapeHtml(r.exe || r.name)}" onclick="openLimitModalFromDataset(this)">
-              <i data-lucide="sliders"></i> Limit
-            </button>
-          </td>
-        </tr>
-      `).join('');
-      if (window.lucide) lucide.createIcons();
+      cachedHistoryRows = rows || [];
+      updateHistorySortIcons();
+      renderDailyHistoryTable();
     })
     .catch(err => {
-      document.getElementById('dailyHistoryBody').innerHTML = `<tr class="empty-row"><td colspan="6">Error: ${err}</td></tr>`;
+      const tbody = document.getElementById('dailyHistoryBody');
+      if (tbody) tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Error: ${err}</td></tr>`;
     });
 }
 

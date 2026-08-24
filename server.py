@@ -418,6 +418,41 @@ def ping_sample_endpoint(req: PingSampleRequest):
     """Fast single-probe latency measurement for continuous jitter monitoring"""
     return diagnostics.ping_target_latency(req.host)
 
+class ExportReportRequest(BaseModel):
+    html_content: str
+    filename: Optional[str] = None
+
+@app.post("/api/diagnostics/export-report")
+def export_report_endpoint(req: ExportReportRequest):
+    """Saves HTML diagnostic report to User's Desktop and opens it in default browser"""
+    desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop")
+    if not os.path.exists(desktop_dir):
+        desktop_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        if not os.path.exists(desktop_dir):
+            desktop_dir = os.getcwd()
+
+    file_name = req.filename or f"NetworkSentinel_Report_{time.strftime('%Y%m%d_%H%M%S')}.html"
+    file_path = os.path.join(desktop_dir, file_name)
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(req.html_content)
+
+    # Open file automatically in default browser
+    try:
+        if os.name == 'nt':
+            os.startfile(file_path)
+        else:
+            webbrowser.open(f"file://{os.path.abspath(file_path)}")
+    except Exception as e:
+        logger.warning(f"Could not auto-launch browser for report: {e}")
+
+    return {
+        "status": "ok",
+        "file_path": file_path,
+        "filename": file_name,
+        "message": f"Diagnostic report saved to Desktop and opened in browser: {file_name}"
+    }
+
 @app.get("/api/map/connections")
 def global_map_connections():
     """Aggregates all active outbound connections across processes for Global Cyber Map"""

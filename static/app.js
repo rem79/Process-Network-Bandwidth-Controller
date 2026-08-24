@@ -1524,16 +1524,42 @@ function exportDiagnosticReport() {
 </body>
 </html>`;
 
-  const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `NetworkSentinel_Diagnostic_Report_${fileDate}.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  showToast("Diagnostic report downloaded successfully!", "success");
+  const filename = `NetworkSentinel_Diagnostic_Report_${fileDate}.html`;
+
+  // 1. Post to Backend to save to Desktop and auto-open in default browser
+  fetch('/api/diagnostics/export-report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      html_content: reportHtml,
+      filename: filename
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      showToast(`✅ 진단 리포트가 바탕화면에 저장되고 브라우저로 열렸습니다!`, "success");
+    } else {
+      showToast(data.message || "Failed to save report on server", "warning");
+    }
+  })
+  .catch(err => {
+    // Fallback: Browser Blob download if backend fails
+    try {
+      const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("Diagnostic report downloaded successfully!", "success");
+    } catch (e) {
+      showToast(`Export error: ${err.message}`, "danger");
+    }
+  });
 }
 
 function showNotification(message, type = 'info') {

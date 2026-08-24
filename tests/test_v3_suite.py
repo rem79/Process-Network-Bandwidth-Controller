@@ -3,6 +3,7 @@ Unit tests for Next-Gen Network Sentinel Suite v3.0 (Inspector & Diagnostics)
 """
 
 import unittest
+import os
 from unittest.mock import patch, MagicMock
 import network_inspector
 import diagnostics
@@ -88,6 +89,13 @@ class TestV3Suite(unittest.TestCase):
         req_ping = server.PingSampleRequest(host="8.8.8.8")
         res_ping = server.ping_sample_endpoint(req_ping)
         self.assertIn("status", res_ping)
+
+        # Export Report endpoint
+        req_export = server.ExportReportRequest(html_content="<h1>Test</h1>", filename="test_report_sample.html")
+        res_export = server.export_report_endpoint(req_export)
+        self.assertEqual(res_export["status"], "ok")
+        if os.path.exists(res_export["file_path"]):
+            os.remove(res_export["file_path"])
 
     def test_port_tester_standalone(self):
         res = diagnostics.test_tcp_port("127.0.0.1", 80, timeout=0.5)

@@ -1456,24 +1456,37 @@ function renderJitterCanvas() {
 // Export Diagnostic Report (One-Click HTML Export)
 // ----------------------------------------------------
 function exportDiagnosticReport() {
-  const timestamp = new Date().toLocaleString();
-  const fileDate = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const triggerBtn = document.querySelector('.btn-export-trigger');
+  if (triggerBtn) {
+    triggerBtn.disabled = true;
+    triggerBtn.innerHTML = `<div class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;"></div> <span>저장 중...</span>`;
+  }
 
-  let activeProcsHtml = '';
-  (cachedProcessData || []).slice(0, 10).forEach(p => {
-    activeProcsHtml += `
-      <tr>
-        <td>${p.pid}</td>
-        <td><strong>${escapeHtml(p.name)}</strong></td>
-        <td>${formatBandwidth(p.download_speed || 0)}</td>
-        <td>${formatBandwidth(p.upload_speed || 0)}</td>
-        <td>${p.cpu_percent || 0}%</td>
-        <td>${p.active_sockets || 0}</td>
-      </tr>
-    `;
-  });
+  try {
+    const timestamp = new Date().toLocaleString();
+    const fileDate = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
-  const reportHtml = `<!DOCTYPE html>
+    let activeProcsHtml = '';
+    const procs = (allProcesses && allProcesses.length > 0) ? allProcesses.slice(0, 15) : [];
+    procs.forEach(p => {
+      activeProcsHtml += `
+        <tr>
+          <td>${p.pid}</td>
+          <td><strong>${escapeHtml(p.name)}</strong></td>
+          <td>${p.down_formatted || '0 KB/s'}</td>
+          <td>${p.up_formatted || '0 KB/s'}</td>
+          <td>${p.cpu_percent ? p.cpu_percent.toFixed(1) : 0}%</td>
+          <td>${p.connections || 0}</td>
+        </tr>
+      `;
+    });
+
+    const ifaceText = document.getElementById('metricInterface') ? document.getElementById('metricInterface').innerText : 'Ethernet';
+    const signalText = document.getElementById('metricSignal') ? document.getElementById('metricSignal').innerText : '100%';
+    const gatewayText = document.getElementById('metricGateway') ? document.getElementById('metricGateway').innerText : 'Optimal';
+    const activeCapsCount = Object.keys(activeLimits || {}).length;
+
+    const reportHtml = `<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
@@ -1498,9 +1511,9 @@ function exportDiagnosticReport() {
     
     <div class="section">
       <h3>1. LOCAL ADAPTER & GATEWAY HEALTH</h3>
-      <p>• Interface: <strong>${document.getElementById('metricInterface') ? document.getElementById('metricInterface').innerText : 'Ethernet'}</strong></p>
-      <p>• Signal Quality: <strong>${document.getElementById('metricSignal') ? document.getElementById('metricSignal').innerText : '100%'}</strong></p>
-      <p>• Gateway RTT: <strong>${document.getElementById('metricGateway') ? document.getElementById('metricGateway').innerText : 'Optimal'}</strong></p>
+      <p>• Interface: <strong>${ifaceText}</strong></p>
+      <p>• Signal Quality: <strong>${signalText}</strong></p>
+      <p>• Gateway RTT: <strong>${gatewayText}</strong></p>
     </div>
 
     <div class="section">
@@ -1518,53 +1531,54 @@ function exportDiagnosticReport() {
     <div class="section">
       <h3>3. ENTERPRISE TROUBLESHOOTING STATUS</h3>
       <p>• DNS Status: Operational</p>
-      <p>• Active QoS Caps: ${(cachedQosRules || []).length} policies applied</p>
+      <p>• Active QoS Caps: ${activeCapsCount} policies applied</p>
     </div>
   </div>
 </body>
 </html>`;
 
-  const filename = `NetworkSentinel_Diagnostic_Report_${fileDate}.html`;
+    const filename = `NetworkSentinel_Diagnostic_Report_${fileDate}.html`;
 
-  // Provide immediate UI feedback on the trigger button
-  const triggerBtn = document.querySelector('.btn-export-trigger');
-  if (triggerBtn) {
-    triggerBtn.disabled = true;
-    triggerBtn.innerHTML = `<div class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;"></div> <span>저장 중...</span>`;
-  }
-
-  fetch('/api/diagnostics/export-report', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      html_content: reportHtml,
-      filename: filename
+    fetch('/api/diagnostics/export-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html_content: reportHtml,
+        filename: filename
+      })
     })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (triggerBtn) {
-      triggerBtn.disabled = false;
-      triggerBtn.innerHTML = `<i data-lucide="download"></i> <span>진단 리포트 저장</span>`;
-    }
+    .then(res => res.json())
+    .then(data => {
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.innerHTML = `<i data-lucide="download"></i> <span>진단 리포트 저장</span>`;
+      }
 
-    if (data.status === 'ok') {
-      lastSavedReportPath = data.file_path;
-      showToast(`✅ 진단 리포트 저장 완료!`, "success");
-      openReportExportModal(data.file_path);
-    } else {
-      showToast(data.message || "Failed to save report", "warning");
-    }
-    if (window.lucide) lucide.createIcons();
-  })
-  .catch(err => {
+      if (data.status === 'ok') {
+        lastSavedReportPath = data.file_path;
+        showToast(`✅ 진단 리포트 저장 완료!`, "success");
+        openReportExportModal(data.file_path);
+      } else {
+        showToast(data.message || "Failed to save report", "warning");
+      }
+      if (window.lucide) lucide.createIcons();
+    })
+    .catch(err => {
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.innerHTML = `<i data-lucide="download"></i> <span>진단 리포트 저장</span>`;
+      }
+      showToast(`Export error: ${err.message}`, "danger");
+      if (window.lucide) lucide.createIcons();
+    });
+  } catch (err) {
     if (triggerBtn) {
       triggerBtn.disabled = false;
       triggerBtn.innerHTML = `<i data-lucide="download"></i> <span>진단 리포트 저장</span>`;
     }
-    showToast(`Export error: ${err.message}`, "danger");
+    showToast(`Report build error: ${err.message}`, "danger");
     if (window.lucide) lucide.createIcons();
-  });
+  }
 }
 
 let lastSavedReportPath = '';

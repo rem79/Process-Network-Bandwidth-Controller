@@ -386,7 +386,7 @@ function renderProcesses() {
         </td>
         <td><span class="pid-tag">${p.pid}</span></td>
         <td>
-          <button class="socket-link-btn" onclick="openConnectionsModal(${p.pid}, '${escapeHtml(p.name)}')">
+          <button class="socket-link-btn" data-pid="${p.pid}" data-name="${escapeHtml(p.name)}" onclick="openConnectionsModalFromDataset(this)" title="Inspect active TCP/UDP sockets for PID ${p.pid}">
             <i data-lucide="network"></i> ${p.connections} sockets
           </button>
         </td>
@@ -544,11 +544,23 @@ function removeGlobalLimit() {
 }
 
 /* Socket Inspector Modal */
+function openConnectionsModalFromDataset(el) {
+  const pid = parseInt(el.getAttribute('data-pid'), 10) || 0;
+  const name = el.getAttribute('data-name') || `PID ${pid}`;
+  openConnectionsModal(pid, name);
+}
+
 function openConnectionsModal(pid, name) {
-  document.getElementById('connModalTitle').innerText = `Sockets: ${name} (PID: ${pid})`;
-  document.getElementById('connModalSub').innerText = `Querying active TCP/UDP endpoints for PID ${pid}...`;
-  document.getElementById('connTableBody').innerHTML = `<tr class="empty-row"><td colspan="4"><div class="loading-spinner"></div><p>Fetching socket table...</p></td></tr>`;
-  document.getElementById('connectionsModal').classList.add('show');
+  const titleEl = document.getElementById('connModalTitle');
+  const subEl = document.getElementById('connModalSub');
+  const tbody = document.getElementById('connTableBody');
+
+  if (titleEl) titleEl.innerText = `Sockets: ${name} (PID: ${pid})`;
+  if (subEl) subEl.innerText = `Querying active TCP/UDP endpoints for PID ${pid}...`;
+  if (tbody) tbody.innerHTML = `<tr class="empty-row"><td colspan="4"><div class="loading-spinner"></div><p>Fetching socket table...</p></td></tr>`;
+  
+  const modalEl = document.getElementById('connectionsModal');
+  if (modalEl) modalEl.classList.add('show');
 
   fetch(`/api/process/${pid}/connections`)
     .then(res => {
@@ -556,9 +568,10 @@ function openConnectionsModal(pid, name) {
       return res.json();
     })
     .then(data => {
-      document.getElementById('connModalSub').innerText = `Found ${data.count} active network sockets`;
-      const tbody = document.getElementById('connTableBody');
-      if (data.connections.length === 0) {
+      if (subEl) subEl.innerText = `Found ${data.count || 0} active network sockets`;
+      if (!tbody) return;
+
+      if (!data.connections || data.connections.length === 0) {
         tbody.innerHTML = `<tr class="empty-row"><td colspan="4">No active network endpoints established.</td></tr>`;
         return;
       }
@@ -573,13 +586,29 @@ function openConnectionsModal(pid, name) {
       `).join('');
     })
     .catch(err => {
-      document.getElementById('connTableBody').innerHTML = `<tr class="empty-row"><td colspan="4" style="color: #FF0054;">${err.message}</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr class="empty-row"><td colspan="4" style="color: #FF0054;">${err.message}</td></tr>`;
     });
 }
 
 function closeConnectionsModal() {
-  document.getElementById('connectionsModal').classList.remove('show');
+  const modalEl = document.getElementById('connectionsModal');
+  if (modalEl) modalEl.classList.remove('show');
 }
+
+function onBackdropClick(event, modalId) {
+  if (event.target && event.target.id === modalId) {
+    if (modalId === 'connectionsModal') closeConnectionsModal();
+    if (modalId === 'limitModal') closeLimitModal();
+  }
+}
+
+// Global Escape Key Listener for Modals
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeLimitModal();
+    closeConnectionsModal();
+  }
+});
 
 /* Analytics Data Loader & Sorting */
 function sortHistoryByHeader(key) {

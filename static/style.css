@@ -1912,5 +1912,44 @@ input[type="number"]:focus, .select-input:focus {
   justify-content: center;
 }
 
+/* Report Export Modal */
+.report-export-card {
+  max-width: 560px;
+}
+.report-success-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+.file-path-box {
+  display: flex;
+  gap: 8px;
+}
+.mono-path-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 8px 12px;
+}
+.report-action-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+.report-action-buttons button {
+  flex: 1;
+  justify-content: center;
+  padding: 10px 14px;
+}
+
+
 
 

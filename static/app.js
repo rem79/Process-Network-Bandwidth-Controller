@@ -1526,7 +1526,13 @@ function exportDiagnosticReport() {
 
   const filename = `NetworkSentinel_Diagnostic_Report_${fileDate}.html`;
 
-  // 1. Post to Backend to save to Desktop and auto-open in default browser
+  // Provide immediate UI feedback on the trigger button
+  const triggerBtn = document.querySelector('.btn-export-trigger');
+  if (triggerBtn) {
+    triggerBtn.disabled = true;
+    triggerBtn.innerHTML = `<div class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;"></div> <span>저장 중...</span>`;
+  }
+
   fetch('/api/diagnostics/export-report', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1537,28 +1543,77 @@ function exportDiagnosticReport() {
   })
   .then(res => res.json())
   .then(data => {
+    if (triggerBtn) {
+      triggerBtn.disabled = false;
+      triggerBtn.innerHTML = `<i data-lucide="download"></i> <span>진단 리포트 저장</span>`;
+    }
+
     if (data.status === 'ok') {
-      showToast(`✅ 진단 리포트가 바탕화면에 저장되고 브라우저로 열렸습니다!`, "success");
+      lastSavedReportPath = data.file_path;
+      showToast(`✅ 진단 리포트 저장 완료!`, "success");
+      openReportExportModal(data.file_path);
     } else {
-      showToast(data.message || "Failed to save report on server", "warning");
+      showToast(data.message || "Failed to save report", "warning");
+    }
+    if (window.lucide) lucide.createIcons();
+  })
+  .catch(err => {
+    if (triggerBtn) {
+      triggerBtn.disabled = false;
+      triggerBtn.innerHTML = `<i data-lucide="download"></i> <span>진단 리포트 저장</span>`;
+    }
+    showToast(`Export error: ${err.message}`, "danger");
+    if (window.lucide) lucide.createIcons();
+  });
+}
+
+let lastSavedReportPath = '';
+
+function openReportExportModal(filePath) {
+  const pathInput = document.getElementById('reportFilePathInput');
+  if (pathInput) pathInput.value = filePath || '';
+  const modal = document.getElementById('reportExportModal');
+  if (modal) modal.classList.add('active');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeReportExportModal() {
+  const modal = document.getElementById('reportExportModal');
+  if (modal) modal.classList.remove('active');
+}
+
+function copyReportFilePath() {
+  const pathInput = document.getElementById('reportFilePathInput');
+  if (pathInput && pathInput.value) {
+    navigator.clipboard.writeText(pathInput.value).then(() => {
+      showToast("파일 경로가 클립보드에 복사되었습니다!", "info");
+    });
+  }
+}
+
+function openSavedReportBrowser() {
+  if (lastSavedReportPath) {
+    window.open(`file:///${lastSavedReportPath.replace(/\\/g, '/')}`, '_blank');
+  }
+}
+
+function openReportExplorerFolder() {
+  if (!lastSavedReportPath) return;
+  fetch('/api/diagnostics/open-folder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_path: lastSavedReportPath })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      showToast("윈도우 파일 탐색기에서 파일을 열었습니다.", "info");
+    } else {
+      showToast(data.message || "폴더를 열 수 없습니다.", "warning");
     }
   })
   .catch(err => {
-    // Fallback: Browser Blob download if backend fails
-    try {
-      const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast("Diagnostic report downloaded successfully!", "success");
-    } catch (e) {
-      showToast(`Export error: ${err.message}`, "danger");
-    }
+    showToast(`Explorer error: ${err.message}`, "danger");
   });
 }
 

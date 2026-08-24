@@ -681,6 +681,21 @@ function openPlaybookModal() {
   const modalEl = document.getElementById('playbookModal');
   if (modalEl) modalEl.classList.add('show');
   if (window.lucide) lucide.createIcons();
+
+  // Attach smooth scrolling to section pills
+  const pills = modalEl.querySelectorAll('.pb-pill');
+  pills.forEach(pill => {
+    pill.onclick = (e) => {
+      e.preventDefault();
+      pills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      const targetId = pill.getAttribute('href');
+      const targetSection = modalEl.querySelector(targetId);
+      if (targetSection) {
+        targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+  });
 }
 
 function closePlaybookModal() {

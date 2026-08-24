@@ -578,64 +578,117 @@
       </div>
 
       <div class="modal-body playbook-body">
-        <!-- Section 1 -->
-        <div class="playbook-section">
-          <div class="section-badge"><i data-lucide="truck"></i> 시나리오 1: SAP / TMS 연동 송장 출력 오류 완벽 대응 (4단계)</div>
+        <!-- NAVIGATION QUICK JUMP PILLS -->
+        <div class="playbook-nav-pills">
+          <a href="#pbSection1" class="pb-pill active"><i data-lucide="layout"></i> PART 1. 탭별 상세 사용법</a>
+          <a href="#pbSection2" class="pb-pill"><i data-lucide="book"></i> PART 2. 네트워크 핵심 용어사전</a>
+          <a href="#pbSection3" class="pb-pill"><i data-lucide="truck"></i> PART 3. SAP/TMS 실무 장애 대응 SOP</a>
+        </div>
+
+        <!-- PART 1: TAB USAGE GUIDE -->
+        <div class="playbook-section" id="pbSection1">
+          <div class="section-badge"><i data-lucide="layout"></i> PART 1. 각 탭별 기능 및 상세 사용법</div>
+          <div class="playbook-grid-steps">
+            <div class="step-card">
+              <div class="step-num">TAB 1</div>
+              <h4>⚡ Real-time Live Sentinel</h4>
+              <p>• <b>실시간 트래픽 관제:</b> 실행 중인 모든 프로그램의 다운로드/업로드 속도, CPU/RAM 점유율, 소켓 수를 실시간 표시.<br>• <b>QoS 속도 제어:</b> <code>[Limit]</code> 버튼을 눌러 슬라이더 또는 수치 입력(1 KB/s ~ 100 GB/s)으로 특정 앱의 대역폭을 캡(Cap)할 수 있습니다.</p>
+            </div>
+            <div class="step-card">
+              <div class="step-num">TAB 2</div>
+              <h4>📊 Traffic Analytics & History</h4>
+              <p>• <b>누적 사용량 추적:</b> 오늘, 최근 7일, 30일 동안 어느 프로그램이 데이터를 가장 많이 썼는지 SQLite DB에서 분석.<br>• <b>컬럼 정렬:</b> 컬럼 헤더(날짜, 앱이름, 전송량)를 클릭하여 오름차순/내림차순 정렬 가능.</p>
+            </div>
+            <div class="step-card">
+              <div class="step-num">TAB 3</div>
+              <h4>🛡️ Active QoS Rules</h4>
+              <p>• <b>윈도우 커널 정책 관리:</b> 현재 윈도우 <code>NetQosPolicy</code>에 등록된 모든 속도 제한 규칙을 카드 형태로 확인.<br>• <b>원클릭 초기화:</b> <code>[Clear All Policies]</code>로 모든 제한을 한 번에 해제 가능.</p>
+            </div>
+            <div class="step-card">
+              <div class="step-num">TAB 4</div>
+              <h4>🌍 Global Cyber Map</h4>
+              <p>• <b>글로벌 트래픽 레이더:</b> 내 PC(한국)에서 미국(AWS, Google), 유럽, 아시아 등 전 세계 어느 서버로 데이터가 나가는지 네온 아크 라인으로 실시간 시각화.<br>• 우측 목록에서 목적지별 실시간 핑(ms) 확인 가능.</p>
+            </div>
+            <div class="step-card">
+              <div class="step-num">TAB 5</div>
+              <h4>🛠️ Diagnostic Toolbox</h4>
+              <p>• <b>NSLOOKUP & DNS 벤치마크:</b> 도메인을 입력하여 KT, SK, LG, Cloudflare, Google DNS 중 최속 DNS 비교.<br>• <b>Visual Traceroute:</b> 목적지 서버까지의 구간별(Hop) 라우터 경로와 핑 시각화.<br>• <b>로컬 네트워크 진단:</b> Wi-Fi 신호 강도 및 게이트웨이 지연 판별.</p>
+            </div>
+            <div class="step-card">
+              <div class="step-num">MODAL</div>
+              <h4>🔍 Supercharged Sockets Inspector</h4>
+              <p>• 프로세스의 <b>[.. sockets]</b> 버튼을 누르면 열리는 상세 창.<br>• <b>도메인 & 국기 역추적:</b> IP 숫자를 기업명(Netflix, AWS 등)과 국기(🇰🇷, 🇺🇸)로 자동 변환.<br>• <b>[✂️ Kill] 버튼:</b> 꼬이거나 멈춘 TCP 소켓만 1초 만에 강제 절단.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- PART 2: GLOSSARY OF TERMS -->
+        <div class="playbook-section" id="pbSection2">
+          <div class="section-badge"><i data-lucide="book"></i> PART 2. 네트워크 & 시스템 핵심 용어사전 (알기 쉬운 한글 풀이)</div>
+          <div class="playbook-terms-grid">
+            <div class="term-card">
+              <span class="term-badge">PROTOCOL</span>
+              <h4>TCP vs UDP</h4>
+              <p>• <b>TCP:</b> 데이터 유실 없이 순서대로 주고받는 신뢰성 중심 방식 (SAP, 웹, ERP, 파일전송)<br>• <b>UDP:</b> 속도가 우선인 실시간 스트리밍, DNS 조회 방식</p>
+            </div>
+            <div class="term-card">
+              <span class="term-badge">ADDRESS</span>
+              <h4>Local vs Remote Endpoint</h4>
+              <p>• <b>Local:</b> 내 PC 내부 IP와 프로그램이 열어둔 포트 번호<br>• <b>Remote:</b> 접속 중인 상대방 서버의 공인 IP와 포트 (예: <code>:443</code> = 보안 웹, <code>:3200</code> = SAP)</p>
+            </div>
+            <div class="term-card">
+              <span class="term-badge">STATUS</span>
+              <h4>소켓 상태 (ESTABLISHED / SYN_SENT / TIME_WAIT)</h4>
+              <p>• <b>ESTABLISHED:</b> 정상 연결되어 실시간 통신 중<br>• <b>SYN_SENT:</b> 서버에 접속 요청을 보냈으나 답이 없음 (서버 다운, VPN 끊김, 방화벽 차단)<br>• <b>TIME_WAIT:</b> 통신 종료 후 정리 대기 중인 상태</p>
+            </div>
+            <div class="term-card">
+              <span class="term-badge">SPEED</span>
+              <h4>Latency (RTT 핑 지연시간)</h4>
+              <p>• 내 PC에서 신호를 보내 서버가 응답하기까지 걸린 왕복 시간(ms).<br>• 🟢 <code><50ms</code> (국내 초고속) / 🟡 <code>50~150ms</code> (아시아권) / 🔴 <code>>150ms</code> (미국/유럽 등 해저케이블 왕복)</p>
+            </div>
+            <div class="term-card">
+              <span class="term-badge">DNS</span>
+              <h4>NSLOOKUP & Reverse DNS</h4>
+              <p>• <b>NSLOOKUP:</b> 영어 도메인을 IP 숫자로 찾아주는 전화번호부 조회<br>• <b>Reverse DNS:</b> <code>183.91.x.x</code> IP 숫자를 보고 <code>netflix.com</code> 소속 기업을 알아내는 역추적</p>
+            </div>
+            <div class="term-card">
+              <span class="term-badge">ROUTING</span>
+              <h4>Traceroute (Hop 경로 추적)</h4>
+              <p>• 내 PC $\rightarrow$ 공유기 $\rightarrow$ 통신사 $\rightarrow$ 해외 서버까지 몇 개의 라우터(Hop)를 거치는지와 구간별 지연을 추적하는 기능.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- PART 3: SAP / TMS ENTERPRISE SOP -->
+        <div class="playbook-section" id="pbSection3">
+          <div class="section-badge"><i data-lucide="truck"></i> PART 3. 실무 SAP / TMS 중국 연동 송장 출력 장애 대응 가이드 (SOP)</div>
+          
+          <!-- Architecture Note -->
+          <div class="arch-info-box">
+            <div class="arch-title"><i data-lucide="info"></i> 사내 송장 출력 아키텍처 이해하기 (3-Tier 연동 구조)</div>
+            <p>우리 회사는 <b>출하 PC (SAP GUI 또는 웹 크롬) $\rightarrow$ SAP ERP $\rightarrow$ 중국 TMS 서버(운송/라벨 생성) $\rightarrow$ 한국 출하장 프린터(spoolsv.exe)</b>를 거쳐 출력됩니다. 따라서 <code>TMS.exe</code>라는 전용 앱이 없더라도 아래 프로세스를 점검하시면 됩니다.</p>
+          </div>
+
           <div class="playbook-grid-steps">
             <div class="step-card">
               <div class="step-num">STEP 1</div>
-              <h4>내 PC (로컬 프로세스) 점검</h4>
-              <p>• <code>Real-time Live Sentinel</code> 탭에서 <code>TMS.exe</code> 및 <code>spoolsv.exe</code>(프린터 스풀러) 확인<br>• CPU 100% 프리징 또는 실수로 대역폭 제한(Limit)이 걸려있는지 점검</p>
+              <h4>로컬 출하 PC 점검 (SAP GUI & 프린터)</h4>
+              <p>• <code>Real-time Live Sentinel</code> 탭에서 <code>saplogon.exe</code>, <code>chrome.exe</code>, <code>spoolsv.exe</code>(프린터 스풀러) 검색<br>• CPU 100% 프리징 또는 대역폭 제한(Limit) 여부 확인</p>
             </div>
             <div class="step-card">
               <div class="step-num">STEP 2</div>
-              <h4>중국/해외 서버 소켓 상태 점검</h4>
-              <p>• <code>TMS.exe</code> 행의 <b>[.. sockets]</b> 버튼 클릭<br>• <code>SYN_SENT</code>: 서버 다운, VPN 끊김 또는 방화벽 차단<br>• <code>LATENCY</code>가 300ms 이상(빨간색)이면 국제망 회선 지연</p>
+              <h4>중국 TMS 서버 소켓 상태 확인</h4>
+              <p>• <code>saplogon.exe</code> 또는 <code>chrome.exe</code> 행의 <b>[.. sockets]</b> 버튼 클릭<br>• 중국 서버 IP 연결 상태가 <code>ESTABLISHED</code>(정상)인지 <code>SYN_SENT</code>(서버 무응답/방화벽)인지 확인<br>• 핑(ms)이 300ms 이상이면 한중 회선 지연</p>
             </div>
             <div class="step-card">
               <div class="step-num">STEP 3</div>
               <h4>서버 재부팅 대신 [✂️ Kill] 세션 리셋</h4>
-              <p>• 중국 서버를 통째로 껐다 켤 필요 없이, 꼬여있는 소켓의 <b>[✂️ Kill]</b> 버튼을 누르면 1초 만에 세션이 초기화(TCP Reset)되어 송장이 즉시 출력됩니다.</p>
+              <p>• 중국 서버 전체를 재부팅할 필요 없이, 소켓 창에서 중국 서버와 꼬여있는 연결의 <b>[✂️ Kill]</b> 버튼을 누르면 1초 만에 세션이 초기화(TCP Reset)되어 송장 출력이 재개됩니다.</p>
             </div>
             <div class="step-card">
               <div class="step-num">STEP 4</div>
-              <h4>Traceroute 국제망 병목 추적</h4>
-              <p>• <code>Diagnostic Toolbox</code> 탭의 <b>Visual Traceroute</b>에 중국 서버 IP 입력<br>• 국내 구간 vs 한중 해저케이블 vs 중국 통신사 중 어디서 패킷 손실이 나는지 입증</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Section 2 -->
-        <div class="playbook-section">
-          <div class="section-badge"><i data-lucide="zap"></i> 시나리오 2: 웹사이트 / 사내 ERP가 느릴 때 (DNS vs 서버 판별)</div>
-          <div class="playbook-tips-list">
-            <div class="tip-item">
-              <span class="tip-bullet">💡</span>
-              <div>
-                <strong>NSLOOKUP & DNS 벤치마크 활용:</strong>
-                <p><code>Diagnostic Toolbox</code>에서 도메인을 입력하여 <b>KT, SK, LG, Cloudflare, Google</b> 중 어느 DNS가 가장 빠른지 비교하세요. 응답이 빠른 DNS로 PC 네트워크 설정을 변경하면 첫 페이지 로딩 속도가 2~3배 빨라집니다.</p>
-              </div>
-            </div>
-            <div class="tip-item">
-              <span class="tip-bullet">💡</span>
-              <div>
-                <strong>공유기(Wi-Fi) 문제 vs 상대 서버 문제 구분:</strong>
-                <p>상단의 <code>LOCAL NETWORK & ADAPTER DIAGNOSTIC</code>에서 <b>GATEWAY RTT가 5ms 이하</b>라면 공유기와 내 PC는 최적 상태입니다. 이 상태에서 느리다면 100% 상대방 서버 또는 통신사 회선 문제입니다.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Section 3 -->
-        <div class="playbook-section">
-          <div class="section-badge"><i data-lucide="shield-alert"></i> 시나리오 3: 백그라운드 트래픽 독식 및 보안 감시</div>
-          <div class="playbook-tips-list">
-            <div class="tip-item">
-              <span class="tip-bullet">🛡️</span>
-              <div>
-                <strong>글로벌 사이버 레이더 감시:</strong>
-                <p><code>Global Cyber Map</code> 탭에서 내 컴퓨터가 현재 어느 국가, 어느 클라우드 서버(AWS, Google 등)와 실시간 연결을 맺고 있는지 한눈에 관제하고 이상 해외 통신을 즉시 적발하세요.</p>
-              </div>
+              <h4>Traceroute로 국제망/해저케이블 증거 확보</h4>
+              <p>• <code>Diagnostic Toolbox</code> 탭의 <b>Visual Traceroute</b>에 중국 서버 IP 입력<br>• 한국 통신사 vs 해저케이블 vs 중국 통신사 중 어디서 패킷 손실(Timeout)이 나는지 명확히 입증</p>
             </div>
           </div>
         </div>

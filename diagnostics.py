@@ -252,3 +252,106 @@ def flush_network_stack() -> dict:
         "message": "Windows Network Stack, DNS Resolver, and ARP caches refreshed successfully!"
     }
 
+KNOWN_SERVICE_PORTS = {
+    80: "HTTP (Web Server)",
+    443: "HTTPS (Secure Web / TLS)",
+    3200: "SAP Dispatcher (GUI)",
+    3300: "SAP Gateway (RFC / TMS)",
+    3600: "SAP Message Server",
+    515: "LPD / LPR (Print Spooler)",
+    9100: "RAW JetDirect / Zebra Label Print",
+    1521: "Oracle Database",
+    3306: "MySQL Database",
+    1433: "MS SQL Server",
+    5432: "PostgreSQL Database",
+    22: "SSH (Secure Shell)",
+    3389: "RDP (Remote Desktop)",
+    21: "FTP (File Transfer)",
+    53: "DNS (Domain Name System)",
+    8080: "HTTP Alternative / Proxy",
+    8443: "HTTPS Alternative / Tomcat"
+}
+
+def test_tcp_port(host: str, port: int, timeout: float = 2.0) -> dict:
+    """
+    Tests TCP 3-Way Handshake reachability to target host and port.
+    Returns latency in ms and service status.
+    """
+    clean_host = host.strip()
+    service_name = KNOWN_SERVICE_PORTS.get(port, f"Custom Port ({port})")
+    
+    t0 = time.perf_counter()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    
+    try:
+        sock.connect((clean_host, port))
+        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+        sock.close()
+        return {
+            "status": "OPEN",
+            "host": clean_host,
+            "port": port,
+            "service": service_name,
+            "latency_ms": elapsed_ms,
+            "message": f"TCP Port {port} ({service_name}) is reachable and actively accepting connections."
+        }
+    except socket.timeout:
+        sock.close()
+        return {
+            "status": "TIMEOUT / FILTERED",
+            "host": clean_host,
+            "port": port,
+            "service": service_name,
+            "latency_ms": None,
+            "message": f"Connection timed out. Port {port} is likely blocked by a firewall (Windows/China/Cloud) or host is unreachable."
+        }
+    except ConnectionRefusedError:
+        sock.close()
+        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+        return {
+            "status": "CLOSED",
+            "host": clean_host,
+            "port": port,
+            "service": service_name,
+            "latency_ms": elapsed_ms,
+            "message": f"Host is alive but Port {port} actively refused connection (Service not running or listening on target port)."
+        }
+    except Exception as e:
+        sock.close()
+        return {
+            "status": "ERROR",
+            "host": clean_host,
+            "port": port,
+            "service": service_name,
+            "latency_ms": None,
+            "message": f"Failed to test port: {str(e)}"
+        }
+
+def ping_target_latency(host: str, timeout: float = 1.0) -> dict:
+    """
+    Executes a fast latency sample via TCP connection attempt on standard ports (80, 443, or DNS 53).
+    """
+    clean_host = host.strip()
+    t0 = time.perf_counter()
+    success = False
+    
+    for port in [443, 80, 53]:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        try:
+            sock.connect((clean_host, port))
+            sock.close()
+            success = True
+            break
+        except Exception:
+            sock.close()
+            continue
+
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+    if success:
+        return {"status": "ok", "host": clean_host, "latency_ms": elapsed_ms}
+    else:
+        return {"status": "loss", "host": clean_host, "latency_ms": None}
+
+

@@ -1792,4 +1792,125 @@ input[type="number"]:focus, .select-input:focus {
   margin: 0;
 }
 
+/* Export Report Button */
+.btn-export-trigger {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: #10B981 !important;
+  color: #10B981 !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-export-trigger:hover {
+  background: #10B981 !important;
+  color: #070A12 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+}
+
+/* Port Tester Quick Presets & Results */
+.port-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.preset-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.port-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-card);
+  border-radius: 4px;
+  color: var(--text-sub);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.port-chip:hover {
+  background: rgba(0, 242, 254, 0.15);
+  border-color: var(--accent-cyan);
+  color: #FFFFFF;
+}
+
+.port-test-results {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  min-height: 80px;
+}
+.port-res-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.port-res-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.port-badge-open {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10B981;
+  border: 1px solid #10B981;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.port-badge-closed {
+  background: rgba(239, 68, 68, 0.2);
+  color: #EF4444;
+  border: 1px solid #EF4444;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* Jitter Radar & Packet Loss */
+.jitter-radar-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.jitter-stat {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+}
+.stat-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.stat-val {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+}
+.stat-loss { color: #10B981; }
+.stat-loss.has-loss { color: #EF4444; }
+
+.jitter-canvas-wrapper {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  display: flex;
+  justify-content: center;
+}
+
+
 

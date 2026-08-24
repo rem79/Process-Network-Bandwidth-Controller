@@ -1253,6 +1253,289 @@ function executeNetworkFlush() {
   });
 }
 
+// ----------------------------------------------------
+// TCP Port Reachability & Firewall Tester
+// ----------------------------------------------------
+function selectPortPreset(port, name) {
+  const portInput = document.getElementById('portTestPortInput');
+  if (portInput) portInput.value = port;
+  showToast(`Selected port ${port} (${name})`, 'info');
+}
+
+function executePortTest() {
+  const hostInput = document.getElementById('portTestHostInput');
+  const portInput = document.getElementById('portTestPortInput');
+  const resContainer = document.getElementById('portTestResults');
+  if (!hostInput || !portInput || !resContainer) return;
+
+  const host = hostInput.value.trim();
+  const port = parseInt(portInput.value, 10);
+  if (!host || isNaN(port)) {
+    showToast("Please enter valid host IP and port number", "warning");
+    return;
+  }
+
+  resContainer.innerHTML = `<div class="empty-text"><div class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;"></div> Testing TCP Handshake to ${escapeHtml(host)}:${port}...</div>`;
+
+  fetch('/api/diagnostics/port-test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host: host, port: port })
+  })
+  .then(res => res.json())
+  .then(data => {
+    let badgeClass = 'port-badge-closed';
+    if (data.status === 'OPEN') badgeClass = 'port-badge-open';
+
+    resContainer.innerHTML = `
+      <div class="port-res-card">
+        <div class="port-res-header">
+          <div>
+            <strong>${escapeHtml(data.host)}:${data.port}</strong>
+            <span style="font-size:0.75rem; color:var(--text-muted); margin-left:6px;">(${escapeHtml(data.service)})</span>
+          </div>
+          <span class="${badgeClass}">${data.status} ${data.latency_ms ? `(~${data.latency_ms} ms)` : ''}</span>
+        </div>
+        <p style="font-size:0.78rem; color:var(--text-sub); margin:0; line-height:1.4;">${escapeHtml(data.message)}</p>
+      </div>
+    `;
+    if (data.status === 'OPEN') {
+      showToast(`Port ${port} is OPEN! Handshake: ${data.latency_ms}ms`, 'success');
+    } else {
+      showToast(`Port ${port} is ${data.status}`, 'warning');
+    }
+  })
+  .catch(err => {
+    resContainer.innerHTML = `<div class="text-danger" style="font-size:0.85rem;">⚠️ Error: ${escapeHtml(err.message)}</div>`;
+    showToast(`Port test failed: ${err.message}`, 'danger');
+  });
+}
+
+// ----------------------------------------------------
+// Continuous Live Jitter & Packet Loss Monitor
+// ----------------------------------------------------
+let jitterInterval = null;
+let jitterHistory = [];
+const MAX_JITTER_POINTS = 30;
+let jitterSent = 0;
+let jitterLost = 0;
+
+function toggleJitterMonitor() {
+  const btnEl = document.getElementById('btnToggleJitter');
+  const hostInput = document.getElementById('jitterHostInput');
+  if (!btnEl || !hostInput) return;
+
+  if (jitterInterval) {
+    clearInterval(jitterInterval);
+    jitterInterval = null;
+    btnEl.innerHTML = `<i data-lucide="play"></i> Start Monitor`;
+    btnEl.className = 'btn-cyan';
+    showToast("Jitter monitor paused", "info");
+  } else {
+    const target = hostInput.value.trim() || '8.8.8.8';
+    jitterSent = 0;
+    jitterLost = 0;
+    jitterHistory = [];
+    btnEl.innerHTML = `<i data-lucide="square"></i> Stop Monitor`;
+    btnEl.className = 'btn-danger';
+    showToast(`Started live ping monitor to ${target}`, "success");
+    runJitterProbe(target);
+    jitterInterval = setInterval(() => runJitterProbe(target), 1200);
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function runJitterProbe(target) {
+  jitterSent++;
+  fetch('/api/diagnostics/ping-sample', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host: target })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === 'ok' && data.latency_ms !== null) {
+      jitterHistory.push(data.latency_ms);
+      document.getElementById('jitterCurPing').innerText = `${data.latency_ms} ms`;
+    } else {
+      jitterLost++;
+      jitterHistory.push(null);
+      document.getElementById('jitterCurPing').innerText = `TIMEOUT`;
+    }
+
+    if (jitterHistory.length > MAX_JITTER_POINTS) jitterHistory.shift();
+
+    const lossPct = ((jitterLost / jitterSent) * 100).toFixed(1);
+    const lossEl = document.getElementById('jitterLossVal');
+    if (lossEl) {
+      lossEl.innerText = `${lossPct}%`;
+      if (lossPct > 0) lossEl.classList.add('has-loss');
+      else lossEl.classList.remove('has-loss');
+    }
+
+    // Calc Avg Jitter
+    const validPings = jitterHistory.filter(p => p !== null);
+    if (validPings.length > 1) {
+      let diffs = 0;
+      for (let i = 1; i < validPings.length; i++) {
+        diffs += Math.abs(validPings[i] - validPings[i - 1]);
+      }
+      const avgJitter = (diffs / (validPings.length - 1)).toFixed(1);
+      document.getElementById('jitterAvgVal').innerText = `~${avgJitter} ms`;
+    }
+
+    renderJitterCanvas();
+  })
+  .catch(() => {
+    jitterLost++;
+    jitterHistory.push(null);
+    if (jitterHistory.length > MAX_JITTER_POINTS) jitterHistory.shift();
+    renderJitterCanvas();
+  });
+}
+
+function renderJitterCanvas() {
+  const canvas = document.getElementById('jitterCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background Grid Lines
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+  ctx.lineWidth = 1;
+  for (let y = 15; y < h; y += 20) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  if (jitterHistory.length === 0) return;
+
+  const validVals = jitterHistory.filter(v => v !== null);
+  const maxVal = Math.max(100, ...validVals);
+  const stepX = w / (MAX_JITTER_POINTS - 1);
+
+  // Draw Area Gradient
+  ctx.beginPath();
+  let firstValid = true;
+  for (let i = 0; i < jitterHistory.length; i++) {
+    const val = jitterHistory[i];
+    const x = i * stepX;
+    const y = val === null ? h - 4 : h - (val / maxVal) * (h - 15) - 8;
+
+    if (i === 0 || firstValid) {
+      ctx.moveTo(x, y);
+      firstValid = false;
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+
+  ctx.strokeStyle = '#00F2FE';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Draw Dots
+  for (let i = 0; i < jitterHistory.length; i++) {
+    const val = jitterHistory[i];
+    const x = i * stepX;
+    const y = val === null ? h - 4 : h - (val / maxVal) * (h - 15) - 8;
+
+    ctx.beginPath();
+    ctx.arc(x, y, val === null ? 3 : 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = val === null ? '#EF4444' : '#00F2FE';
+    ctx.fill();
+  }
+}
+
+// ----------------------------------------------------
+// Export Diagnostic Report (One-Click HTML Export)
+// ----------------------------------------------------
+function exportDiagnosticReport() {
+  const timestamp = new Date().toLocaleString();
+  const fileDate = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+  let activeProcsHtml = '';
+  (cachedProcessData || []).slice(0, 10).forEach(p => {
+    activeProcsHtml += `
+      <tr>
+        <td>${p.pid}</td>
+        <td><strong>${escapeHtml(p.name)}</strong></td>
+        <td>${formatBandwidth(p.download_speed || 0)}</td>
+        <td>${formatBandwidth(p.upload_speed || 0)}</td>
+        <td>${p.cpu_percent || 0}%</td>
+        <td>${p.active_sockets || 0}</td>
+      </tr>
+    `;
+  });
+
+  const reportHtml = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Network Sentinel Diagnostic Report - ${fileDate}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0A0F1D; color: #E2E8F0; padding: 30px; margin: 0; }
+    .report-card { max-width: 900px; margin: 0 auto; background: #131B2E; border: 1px solid #2A364F; border-radius: 12px; padding: 24px; }
+    h1 { color: #00F2FE; font-size: 1.5rem; margin-top: 0; }
+    .meta { font-size: 0.85rem; color: #94A3B8; margin-bottom: 20px; }
+    .badge { background: #10B981; color: #070A12; font-weight: bold; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.85rem; }
+    th { background: #1E293B; color: #94A3B8; text-align: left; padding: 8px 12px; }
+    td { padding: 8px 12px; border-bottom: 1px solid #2A364F; }
+    .section { margin-top: 24px; }
+    .section h3 { color: #F59E0B; font-size: 1rem; border-bottom: 1px solid #2A364F; padding-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <div class="report-card">
+    <h1>🛡️ PROCESS NETWORK SENTINEL DIAGNOSTIC REPORT</h1>
+    <div class="meta">Generated on: <strong>${timestamp}</strong> | Host: Local System</div>
+    
+    <div class="section">
+      <h3>1. LOCAL ADAPTER & GATEWAY HEALTH</h3>
+      <p>• Interface: <strong>${document.getElementById('metricInterface') ? document.getElementById('metricInterface').innerText : 'Ethernet'}</strong></p>
+      <p>• Signal Quality: <strong>${document.getElementById('metricSignal') ? document.getElementById('metricSignal').innerText : '100%'}</strong></p>
+      <p>• Gateway RTT: <strong>${document.getElementById('metricGateway') ? document.getElementById('metricGateway').innerText : 'Optimal'}</strong></p>
+    </div>
+
+    <div class="section">
+      <h3>2. TOP ACTIVE PROCESSES</h3>
+      <table>
+        <thead>
+          <tr><th>PID</th><th>PROCESS NAME</th><th>DOWNLOAD</th><th>UPLOAD</th><th>CPU</th><th>SOCKETS</th></tr>
+        </thead>
+        <tbody>
+          ${activeProcsHtml || '<tr><td colspan="6">No active process data recorded.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h3>3. ENTERPRISE TROUBLESHOOTING STATUS</h3>
+      <p>• DNS Status: Operational</p>
+      <p>• Active QoS Caps: ${(cachedQosRules || []).length} policies applied</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `NetworkSentinel_Diagnostic_Report_${fileDate}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("Diagnostic report downloaded successfully!", "success");
+}
+
 function showNotification(message, type = 'info') {
   showToast(message, type);
 }

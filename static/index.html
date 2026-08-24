@@ -41,6 +41,9 @@
         <button class="status-badge btn-playbook-trigger" onclick="openPlaybookModal()" title="SAP/TMS 및 실무 네트워크 장애 진단 매뉴얼 & 활용 팁">
           <i data-lucide="book-open"></i> <span>실무 진단 매뉴얼 & 팁</span>
         </button>
+        <button class="status-badge btn-export-trigger" onclick="exportDiagnosticReport()" title="현재 네트워크 상태 및 진단 결과 단일 HTML 보고서로 내보내기">
+          <i data-lucide="download"></i> <span>진단 리포트 저장</span>
+        </button>
         <div class="status-badge live-pulse" id="connectionStatus">
           <span class="pulse-dot"></span> <span id="connText">CONNECTING</span>
         </div>
@@ -430,7 +433,69 @@
           </div>
         </div>
 
-        <!-- Tool 3: One-Click Network Emergency Repair (Flush & Purge) -->
+        <!-- Tool 3: TCP Port Reachability Tester (Port Open / Firewall Inspector) -->
+        <div class="diag-tool-card">
+          <div class="tool-header">
+            <div class="tool-title">
+              <i data-lucide="plug-zap" class="icon-cyan"></i>
+              <span>TCP PORT REACHABILITY & FIREWALL TESTER</span>
+            </div>
+          </div>
+          <div class="tool-input-row">
+            <input type="text" id="portTestHostInput" placeholder="IP / Host (e.g. 192.168.1.1, sap.company.com)" style="flex: 2;">
+            <input type="number" id="portTestPortInput" placeholder="Port" value="3200" style="flex: 1; max-width: 90px;">
+            <button class="btn-primary" onclick="executePortTest()">
+              <i data-lucide="zap"></i> Test Port
+            </button>
+          </div>
+          <div class="port-preset-row">
+            <span class="preset-label">QUICK PRESETS:</span>
+            <button type="button" class="port-chip" onclick="selectPortPreset(3200, 'SAP Dispatcher')">SAP 3200</button>
+            <button type="button" class="port-chip" onclick="selectPortPreset(3300, 'SAP Gateway')">SAP 3300</button>
+            <button type="button" class="port-chip" onclick="selectPortPreset(9100, 'Zebra Print')">Print 9100</button>
+            <button type="button" class="port-chip" onclick="selectPortPreset(443, 'HTTPS')">HTTPS 443</button>
+            <button type="button" class="port-chip" onclick="selectPortPreset(1521, 'Oracle DB')">DB 1521</button>
+            <button type="button" class="port-chip" onclick="selectPortPreset(3389, 'RDP')">RDP 3389</button>
+          </div>
+          <div class="port-test-results" id="portTestResults">
+            <p class="empty-text">Enter target host & port to test TCP handshake reachability.</p>
+          </div>
+        </div>
+
+        <!-- Tool 4: Continuous Jitter & Packet Loss Monitor -->
+        <div class="diag-tool-card">
+          <div class="tool-header">
+            <div class="tool-title">
+              <i data-lucide="line-chart" class="icon-amber"></i>
+              <span>LIVE JITTER & PACKET LOSS RADAR</span>
+            </div>
+          </div>
+          <div class="tool-input-row">
+            <input type="text" id="jitterHostInput" placeholder="Ping Target (e.g. 8.8.8.8, gateway IP)" value="8.8.8.8">
+            <button class="btn-cyan" id="btnToggleJitter" onclick="toggleJitterMonitor()">
+              <i data-lucide="play"></i> Start Monitor
+            </button>
+          </div>
+          <div class="jitter-radar-metrics">
+            <div class="jitter-stat">
+              <span class="stat-label">PACKET LOSS</span>
+              <span class="stat-val stat-loss" id="jitterLossVal">0.0%</span>
+            </div>
+            <div class="jitter-stat">
+              <span class="stat-label">CURRENT PING</span>
+              <span class="stat-val" id="jitterCurPing">-- ms</span>
+            </div>
+            <div class="jitter-stat">
+              <span class="stat-label">AVG JITTER</span>
+              <span class="stat-val" id="jitterAvgVal">~0.0 ms</span>
+            </div>
+          </div>
+          <div class="jitter-canvas-wrapper">
+            <canvas id="jitterCanvas" width="400" height="95"></canvas>
+          </div>
+        </div>
+
+        <!-- Tool 5: One-Click Network Emergency Repair (Flush & Purge) -->
         <div class="diag-tool-card diag-tool-full">
           <div class="tool-header">
             <div class="tool-title">
@@ -631,12 +696,12 @@
             <div class="step-card">
               <div class="step-num">TAB 5</div>
               <h4>🛠️ Diagnostic Toolbox</h4>
-              <p>• <b>NSLOOKUP & DNS 벤치마크:</b> 도메인을 입력하여 KT, SK, LG, Cloudflare, Google DNS 중 최속 DNS 비교.<br>• <b>Visual Traceroute:</b> 목적지 서버까지의 구간별(Hop) 라우터 경로와 핑 시각화.<br>• <b>원클릭 네트워크 응급 복구:</b> PC 렉/DNS 꼬임 시 <code>[Run Emergency Flush]</code>로 1초 만에 DNS 캐시 청소 및 ARP 테이블을 초기화합니다.</p>
+              <p>• <b>NSLOOKUP & DNS 벤치마크:</b> KT/SK/LG 및 글로벌 DNS 응답 속도 비교.<br>• <b>Visual Traceroute:</b> 목적지까지의 구간별(Hop) 라우터 경로 및 핑 시각화.<br>• <b>🔌 TCP Port 포트 진단기:</b> SAP(3200), 라벨 프린터(9100), 웹(443) 포트가 방화벽에 막혔는지 즉시 테스트.<br>• <b>📉 실시간 패킷 손실/지터 감시:</b> 1초마다 연속 핑을 쏴서 간헐적 렉 및 패킷 유실률(%) 기록.<br>• <b>🔄 원클릭 네트워크 응급 복구:</b> 1초 만에 DNS 캐시 및 ARP 테이블 초기화.</p>
             </div>
             <div class="step-card">
-              <div class="step-num">MODAL</div>
-              <h4>🔍 Supercharged Sockets Inspector</h4>
-              <p>• 프로세스의 <b>[.. sockets]</b> 버튼을 누르면 열리는 상세 창.<br>• <b>도메인 & 국기 역추적:</b> IP 숫자를 기업명(Netflix, AWS 등)과 국기(🇰🇷, 🇺🇸)로 자동 변환.<br>• <b>[✂️ Kill] 버튼:</b> 꼬이거나 멈춘 TCP 소켓만 1초 만에 강제 절단.</p>
+              <div class="step-num">HEADER</div>
+              <h4>📥 One-Click Diagnostic Report</h4>
+              <p>• 우측 상단의 <b>[진단 리포트 저장]</b> 버튼을 누르면 현재 PC 상태, DNS 벤치마크, 활성 소켓, 게이트웨이 헬스를 포함한 <b>단일 HTML 보고서</b>가 자동 다운로드됩니다.</p>
             </div>
           </div>
         </div>
@@ -661,19 +726,19 @@
               <p>• <b>ESTABLISHED:</b> 정상 연결되어 실시간 통신 중<br>• <b>SYN_SENT:</b> 서버에 접속 요청을 보냈으나 답이 없음 (서버 다운, VPN 끊김, 방화벽 차단)<br>• <b>TIME_WAIT:</b> 통신 종료 후 정리 대기 중인 상태</p>
             </div>
             <div class="term-card">
-              <span class="term-badge">SPEED</span>
-              <h4>Latency (RTT 핑 지연시간)</h4>
-              <p>• 내 PC에서 신호를 보내 서버가 응답하기까지 걸린 왕복 시간(ms).<br>• 🟢 <code><50ms</code> (국내 초고속) / 🟡 <code>50~150ms</code> (아시아권) / 🔴 <code>>150ms</code> (미국/유럽 등 해저케이블 왕복)</p>
+              <span class="term-badge">QUALITY</span>
+              <h4>Packet Loss & Jitter</h4>
+              <p>• <b>Packet Loss (%):</b> 전송 중 분실된 데이터 비율 (1% 이상이면 송장 출력 지연 발생)<br>• <b>Jitter (ms):</b> 핑 지연시간이 들쭉날쭉 튀는 불안정 정도</p>
+            </div>
+            <div class="term-card">
+              <span class="term-badge">FIREWALL</span>
+              <h4>TCP Port Reachability (Handshake)</h4>
+              <p>• 일반 핑(ICMP)이 차단된 서버라도 <b>SAP 3200, 3300이나 프린터 9100 포트</b>가 방화벽을 통과해 열려있는지(OPEN) 직접 검사하는 방식.</p>
             </div>
             <div class="term-card">
               <span class="term-badge">REPAIR</span>
               <h4>DNS Flush & ARP Cache</h4>
-              <p>• <b>DNS Flush:</b> 내 PC에 잘못 저장된 옛날 서버 IP 정보를 강제로 지우고 새로 받아오는 청소 작업.<br>• <b>ARP Flush:</b> 공유기와 내 PC 사이의 꼬인 하드웨어 주소 테이블을 초기화하는 작업.</p>
-            </div>
-            <div class="term-card">
-              <span class="term-badge">ROUTING</span>
-              <h4>Traceroute (Hop 경로 추적)</h4>
-              <p>• 내 PC $\rightarrow$ 공유기 $\rightarrow$ 통신사 $\rightarrow$ 해외 서버까지 몇 개의 라우터(Hop)를 거치는지와 구간별 지연을 추적하는 기능.</p>
+              <p>• <b>DNS Flush:</b> 잘못 저장된 옛날 서버 IP 정보를 강제로 지우고 새로 받아오는 청소 작업.<br>• <b>ARP Flush:</b> 공유기와 내 PC 사이의 꼬인 하드웨어 주소 테이블을 초기화하는 작업.</p>
             </div>
           </div>
         </div>
@@ -696,8 +761,8 @@
             </div>
             <div class="step-card">
               <div class="step-num">STEP 2</div>
-              <h4>중국 TMS 서버 소켓 상태 확인</h4>
-              <p>• <code>saplogon.exe</code> 또는 <code>chrome.exe</code> 행의 <b>[.. sockets]</b> 버튼 클릭<br>• 중국 서버 IP 연결 상태가 <code>ESTABLISHED</code>(정상)인지 <code>SYN_SENT</code>(서버 무응답/방화벽)인지 확인<br>• 핑(ms)이 300ms 이상이면 한중 회선 지연</p>
+              <h4>중국 TMS 서버 포트 및 소켓 상태 확인</h4>
+              <p>• <code>Diagnostic Toolbox</code> $\rightarrow$ <b>TCP Port Tester</b>에서 중국 서버 IP와 <b>SAP 3200</b> 포트 오픈 여부 검사<br>• SAP GUI 행의 <b>[.. sockets]</b>을 열어 연결 상태가 <code>ESTABLISHED</code>인지 확인</p>
             </div>
             <div class="step-card">
               <div class="step-num">STEP 3</div>
@@ -706,8 +771,8 @@
             </div>
             <div class="step-card">
               <div class="step-num">STEP 4</div>
-              <h4>Traceroute로 국제망/해저케이블 증거 확보</h4>
-              <p>• <code>Diagnostic Toolbox</code> 탭의 <b>Visual Traceroute</b>에 중국 서버 IP 입력<br>• 한국 통신사 vs 해저케이블 vs 중국 통신사 중 어디서 패킷 손실(Timeout)이 나는지 명확히 입증</p>
+              <h4>Traceroute & 진단 리포트 저장</h4>
+              <p>• <code>Visual Traceroute</code>로 중국 구간 타임아웃 증거 포착<br>• 상단 <b>[진단 리포트 저장]</b>을 눌러 보고서(HTML)를 다운받아 전산팀/통신사에 장애 증거로 제출</p>
             </div>
           </div>
         </div>

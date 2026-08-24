@@ -1,6 +1,7 @@
 import asyncio
 import time
 import os
+import subprocess
 import ctypes
 import logging
 import sys
@@ -422,14 +423,26 @@ class ExportReportRequest(BaseModel):
     html_content: str
     filename: Optional[str] = None
 
+class OpenFolderRequest(BaseModel):
+    file_path: str
+
 @app.post("/api/diagnostics/export-report")
 def export_report_endpoint(req: ExportReportRequest):
     """Saves HTML diagnostic report to User's Desktop and opens it in default browser"""
-    desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop")
-    if not os.path.exists(desktop_dir):
-        desktop_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-        if not os.path.exists(desktop_dir):
-            desktop_dir = os.getcwd()
+    user_home = os.path.expanduser("~")
+    # Check regular Desktop or OneDrive Desktop
+    candidates = [
+        os.path.join(user_home, "Desktop"),
+        os.path.join(user_home, "OneDrive", "Desktop"),
+        os.path.join(user_home, "OneDrive - Personal", "Desktop"),
+        os.path.join(user_home, "Downloads"),
+        os.getcwd()
+    ]
+    desktop_dir = os.getcwd()
+    for c in candidates:
+        if os.path.exists(c):
+            desktop_dir = c
+            break
 
     file_name = req.filename or f"NetworkSentinel_Report_{time.strftime('%Y%m%d_%H%M%S')}.html"
     file_path = os.path.join(desktop_dir, file_name)
@@ -450,8 +463,22 @@ def export_report_endpoint(req: ExportReportRequest):
         "status": "ok",
         "file_path": file_path,
         "filename": file_name,
-        "message": f"Diagnostic report saved to Desktop and opened in browser: {file_name}"
+        "desktop_dir": desktop_dir,
+        "message": f"Diagnostic report saved successfully to {file_path}"
     }
+
+@app.post("/api/diagnostics/open-folder")
+def open_folder_endpoint(req: OpenFolderRequest):
+    """Opens Windows Explorer and highlights target report file"""
+    target = req.file_path.strip()
+    if os.path.exists(target):
+        if os.name == 'nt':
+            subprocess.Popen(f'explorer /select,"{os.path.abspath(target)}"')
+        else:
+            subprocess.Popen(['xdg-open', os.path.dirname(target)])
+        return {"status": "ok", "message": "Opened file in explorer."}
+    return {"status": "error", "message": "File path does not exist."}
+
 
 @app.get("/api/map/connections")
 def global_map_connections():

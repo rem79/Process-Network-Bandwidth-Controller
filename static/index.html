@@ -784,6 +784,44 @@
     </div>
   </div>
 
+  <!-- Diagnostic Report Export Completed Modal -->
+  <div class="modal-backdrop" id="reportExportModal" onclick="onBackdropClick(event, 'reportExportModal')">
+    <div class="modal-card report-export-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i data-lucide="file-check-2" class="icon-emerald"></i>
+          <span>DIAGNOSTIC REPORT GENERATED</span>
+        </div>
+        <button class="btn-icon" onclick="closeReportExportModal()"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="report-success-banner">
+          <i data-lucide="check-circle-2" class="icon-emerald" style="width: 32px; height: 32px;"></i>
+          <div>
+            <h4 style="margin: 0; color: #FFFFFF; font-size: 1rem;">진단 리포트가 성공적으로 생성되었습니다!</h4>
+            <p style="margin: 4px 0 0; color: var(--text-sub); font-size: 0.8rem;">현재 PC 상태, 대역폭 점유율, QoS 규칙, 네트워크 헬스가 HTML 보고서로 저장되었습니다.</p>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 16px;">
+          <label>SAVED FILE PATH (저장 위치)</label>
+          <div class="file-path-box">
+            <input type="text" id="reportFilePathInput" readonly class="mono-path-input">
+            <button class="btn-secondary" onclick="copyReportFilePath()" title="경로 복사"><i data-lucide="copy"></i></button>
+          </div>
+        </div>
+
+        <div class="report-action-buttons">
+          <button class="btn-emerald" id="btnOpenBrowserReport" onclick="openSavedReportBrowser()"><i data-lucide="globe"></i> 웹 브라우저에서 보기</button>
+          <button class="btn-primary" id="btnOpenExplorerFolder" onclick="openReportExplorerFolder()"><i data-lucide="folder-open"></i> 저장 폴더 열기 (Explorer)</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeReportExportModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Global Toast Notification Container -->
   <div id="toastContainer" class="toast-container"></div>
 

@@ -94,6 +94,12 @@ class TestV3Suite(unittest.TestCase):
         req_export = server.ExportReportRequest(html_content="<h1>Test</h1>", filename="test_report_sample.html")
         res_export = server.export_report_endpoint(req_export)
         self.assertEqual(res_export["status"], "ok")
+
+        # Open folder endpoint
+        req_folder = server.OpenFolderRequest(file_path=res_export["file_path"])
+        res_folder = server.open_folder_endpoint(req_folder)
+        self.assertEqual(res_folder["status"], "ok")
+
         if os.path.exists(res_export["file_path"]):
             os.remove(res_export["file_path"])
 

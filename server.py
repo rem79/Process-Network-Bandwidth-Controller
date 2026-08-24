@@ -392,6 +392,13 @@ def nslookup_endpoint(req: NslookupRequest):
 def traceroute_endpoint(req: TracerouteRequest):
     return diagnostics.run_visual_traceroute(req.target)
 
+class PortTestRequest(BaseModel):
+    host: str
+    port: int
+
+class PingSampleRequest(BaseModel):
+    host: str
+
 @app.get("/api/diagnostics/health")
 def health_endpoint():
     return diagnostics.get_wifi_lan_health()
@@ -400,6 +407,16 @@ def health_endpoint():
 def flush_network_endpoint():
     """Flushes DNS Resolver cache, ARP table, and refreshes network stack"""
     return diagnostics.flush_network_stack()
+
+@app.post("/api/diagnostics/port-test")
+def port_test_endpoint(req: PortTestRequest):
+    """Tests TCP 3-Way Handshake reachability to target host and port"""
+    return diagnostics.test_tcp_port(req.host, req.port)
+
+@app.post("/api/diagnostics/ping-sample")
+def ping_sample_endpoint(req: PingSampleRequest):
+    """Fast single-probe latency measurement for continuous jitter monitoring"""
+    return diagnostics.ping_target_latency(req.host)
 
 @app.get("/api/map/connections")
 def global_map_connections():

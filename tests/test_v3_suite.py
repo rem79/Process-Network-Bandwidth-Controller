@@ -78,10 +78,21 @@ class TestV3Suite(unittest.TestCase):
         res_ns = server.nslookup_endpoint(req_ns)
         self.assertEqual(res_ns["domain"], "netflix.com")
 
-        # Flush endpoint
-        res_flush = server.flush_network_endpoint()
-        self.assertEqual(res_flush["status"], "ok")
-        self.assertTrue(len(res_flush["actions"]) > 0)
+        # Port Test endpoint
+        req_port = server.PortTestRequest(host="127.0.0.1", port=80)
+        res_port = server.port_test_endpoint(req_port)
+        self.assertIn("status", res_port)
+        self.assertIn("service", res_port)
+
+        # Ping sample endpoint
+        req_ping = server.PingSampleRequest(host="8.8.8.8")
+        res_ping = server.ping_sample_endpoint(req_ping)
+        self.assertIn("status", res_ping)
+
+    def test_port_tester_standalone(self):
+        res = diagnostics.test_tcp_port("127.0.0.1", 80, timeout=0.5)
+        self.assertIn("status", res)
+        self.assertIn("host", res)
 
     def test_network_flush_standalone(self):
         res = diagnostics.flush_network_stack()

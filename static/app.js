@@ -643,11 +643,11 @@ function clearAllPolicies() {
   fetch('/api/limits/clear', { method: 'POST' })
     .then(res => res.json())
     .then(data => {
-      alert(data.message);
+      showToast(data.message, 'success');
       activeLimits = {};
       renderFullPoliciesView();
     })
-    .catch(err => alert("Clear error: " + err));
+    .catch(err => showToast("Clear error: " + err, 'error'));
 }
 
 /* API Calls & Instant Refresh */
@@ -711,14 +711,14 @@ function setLimit(target, appExe, limitKbps, priority = 'normal') {
   .then(res => res.json())
   .then(data => {
     if (data.status === 'ok') {
-      console.log(data.message);
+      showToast(data.message, 'success');
     } else {
-      alert(`Limit application warning: ${data.detail || data.message}`);
+      showToast(`Limit warning: ${data.detail || data.message}`, 'warning');
     }
     refreshLimitsAndViews();
   })
   .catch(err => {
-    alert("Failed to communicate with server: " + err);
+    showToast("Failed to communicate with server: " + err, 'error');
     refreshLimitsAndViews();
   });
 }
@@ -736,7 +736,7 @@ function removeLimit(target) {
   fetch(`/api/limit/${encodeURIComponent(target)}`, { method: 'DELETE' })
     .then(res => res.json())
     .then(data => {
-      console.log(data.message);
+      showToast(data.message || `Removed QoS limit for ${target}`, 'info');
       refreshLimitsAndViews();
     })
     .catch(err => {
@@ -745,7 +745,46 @@ function removeLimit(target) {
     });
 }
 
+/* Toast Notifications */
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  if (!container) {
+    console.log(`[Toast ${type}]: ${message}`);
+    return;
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast-card toast-${type}`;
+  
+  let iconName = 'info';
+  if (type === 'success') iconName = 'check-circle';
+  if (type === 'warning') iconName = 'alert-triangle';
+  if (type === 'error') iconName = 'alert-circle';
+
+  toast.innerHTML = `<i data-lucide="${iconName}"></i><span>${escapeHtml(message)}</span>`;
+  container.appendChild(toast);
+  if (window.lucide) lucide.createIcons();
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(60px)';
+    setTimeout(() => toast.remove(), 350);
+  }, 3500);
+}
+
+function showNotification(message, type = 'info') {
+  showToast(message, type);
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
+
+// Global crash protection
+window.addEventListener('error', (e) => {
+  console.error("Sentinel Global UI Error caught:", e);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error("Sentinel Unhandled Promise Rejection:", e.reason);
+});

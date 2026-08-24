@@ -304,7 +304,23 @@ def get_daily(days: int = Query(7, ge=1, le=90)):
         item["down_formatted"] = format_total_bytes(item["total_down_bytes"])
     return items
 
-# Per-Process Sockets & Connection Details
+# Network Inspector & Diagnostics Endpoints (v3.0)
+import network_inspector
+import diagnostics
+
+class KillSocketRequest(BaseModel):
+    pid: int
+    local_ip: str
+    local_port: int
+    remote_ip: str
+    remote_port: int
+
+class NslookupRequest(BaseModel):
+    domain: str
+
+class TracerouteRequest(BaseModel):
+    target: str
+
 @app.get("/api/process/{pid}/connections")
 def get_process_connections(pid: int):
     try:
@@ -313,14 +329,35 @@ def get_process_connections(pid: int):
         conns = proc.connections(kind='inet')
         results = []
         for c in conns:
-            laddr = f"{c.laddr.ip}:{c.laddr.port}" if c.laddr else "N/A"
-            raddr = f"{c.raddr.ip}:{c.raddr.port}" if c.raddr else "N/A"
+            l_ip = c.laddr.ip if c.laddr else "0.0.0.0"
+            l_port = c.laddr.port if c.laddr else 0
+            r_ip = c.raddr.ip if c.raddr else "N/A"
+            r_port = c.raddr.port if c.raddr else 0
+
+            # GeoIP & Reverse DNS
+            geo = network_inspector.resolve_geoip_sync(r_ip)
+            rdns = network_inspector.resolve_rdns_sync(r_ip) if r_ip != "N/A" else ""
+            threat = network_inspector.inspect_threat(r_ip, r_port, proc_name)
+            latency = network_inspector.measure_latency_ms_sync(r_ip, r_port) if r_ip != "N/A" else 1.0
+
             results.append({
                 "fd": getattr(c, 'fd', -1),
                 "family": str(c.family.name) if hasattr(c.family, 'name') else str(c.family),
                 "type": "TCP" if c.type == 1 else "UDP",
-                "local_address": laddr,
-                "remote_address": raddr,
+                "local_ip": l_ip,
+                "local_port": l_port,
+                "remote_ip": r_ip,
+                "remote_port": r_port,
+                "local_address": f"{l_ip}:{l_port}",
+                "remote_address": f"{r_ip}:{r_port}" if r_ip != "N/A" else "N/A",
+                "rdns": rdns or (geo["org"] if geo["org"] != "Public Internet Server" else r_ip),
+                "country": geo["country"],
+                "flag": geo["flag"],
+                "org": geo["org"],
+                "lat": geo["lat"],
+                "lon": geo["lon"],
+                "latency_ms": latency,
+                "threat": threat,
                 "status": c.status if c.status else ("LISTENING" if c.type == 1 else "ACTIVE")
             })
         return {
@@ -337,6 +374,60 @@ def get_process_connections(pid: int):
             "count": 0,
             "error": str(e)
         }
+
+@app.post("/api/socket/kill")
+def kill_socket_endpoint(req: KillSocketRequest):
+    success = network_inspector.kill_socket_connection(
+        req.pid, req.local_ip, req.local_port, req.remote_ip, req.remote_port
+    )
+    if success:
+        return {"status": "ok", "message": f"Terminated TCP connection {req.remote_ip}:{req.remote_port}"}
+    return {"status": "error", "message": f"Could not terminate connection to {req.remote_ip}:{req.remote_port}"}
+
+@app.post("/api/diagnostics/nslookup")
+def nslookup_endpoint(req: NslookupRequest):
+    return diagnostics.run_nslookup(req.domain)
+
+@app.post("/api/diagnostics/traceroute")
+def traceroute_endpoint(req: TracerouteRequest):
+    return diagnostics.run_visual_traceroute(req.target)
+
+@app.get("/api/diagnostics/health")
+def health_endpoint():
+    return diagnostics.get_wifi_lan_health()
+
+@app.get("/api/map/connections")
+def global_map_connections():
+    """Aggregates all active outbound connections across processes for Global Cyber Map"""
+    active_nodes = []
+    seen = set()
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            conns = proc.connections(kind='inet')
+            for c in conns:
+                if c.raddr and not network_inspector.is_private_ip(c.raddr.ip):
+                    r_ip = c.raddr.ip
+                    if r_ip not in seen:
+                        seen.add(r_ip)
+                        geo = network_inspector.resolve_geoip_sync(r_ip)
+                        rdns = network_inspector.resolve_rdns_sync(r_ip)
+                        active_nodes.append({
+                            "ip": r_ip,
+                            "port": c.raddr.port,
+                            "proc_name": proc.info['name'],
+                            "rdns": rdns or geo["org"],
+                            "country": geo["country"],
+                            "flag": geo["flag"],
+                            "org": geo["org"],
+                            "lat": geo["lat"],
+                            "lon": geo["lon"],
+                            "latency_ms": network_inspector.measure_latency_ms_sync(r_ip, c.raddr.port)
+                        })
+                        if len(active_nodes) >= 30: # Capped for performance
+                            break
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return active_nodes
 
 @app.get("/")
 def read_root():

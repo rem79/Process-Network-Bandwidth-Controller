@@ -55,6 +55,12 @@
       <button class="nav-tab" id="tabPoliciesBtn" onclick="switchTab('policies')">
         <i data-lucide="shield-check"></i> Active QoS Rules (<span id="tabRulesCount">0</span>)
       </button>
+      <button class="nav-tab" id="tabMapBtn" onclick="switchTab('map')">
+        <i data-lucide="globe"></i> Global Cyber Map
+      </button>
+      <button class="nav-tab" id="tabDiagBtn" onclick="switchTab('diagnostics')">
+        <i data-lucide="wrench"></i> Diagnostic Toolbox
+      </button>
     </nav>
 
     <!-- TAB 1: LIVE SENTINEL VIEW -->
@@ -279,12 +285,146 @@
             <i data-lucide="shield-check"></i>
             <h3>CONFIGURED QOS POLICIES</h3>
           </div>
-          <button class="btn-danger" onclick="clearAllLimits()">
+          <button class="btn-danger" onclick="clearAllPolicies()">
             <i data-lucide="trash-2"></i> Clear All Policies
           </button>
         </div>
         <div class="policies-grid" id="fullPoliciesGrid">
           <div class="loading-spinner"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: GLOBAL CYBER MAP VIEW -->
+    <div id="viewMap" class="tab-view">
+      <div class="map-layout">
+        <div class="map-card">
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="globe" class="icon-cyan"></i>
+              <span>GLOBAL CYBER TRAFFIC RADAR</span>
+            </div>
+            <button class="btn-sm-secondary" onclick="loadGlobalMapData()">
+              <i data-lucide="refresh-cw"></i> Refresh Map
+            </button>
+          </div>
+          <div class="map-visual-container">
+            <div id="worldMapCanvasContainer" class="world-map-svg-wrap">
+              <svg viewBox="0 0 1000 500" class="neon-world-map" id="worldMapSvg">
+                <!-- Cyber Grid Lines -->
+                <defs>
+                  <linearGradient id="cyberLineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#00F2FE" stop-opacity="0.8"/>
+                    <stop offset="100%" stop-color="#9D4EDD" stop-opacity="0.8"/>
+                  </linearGradient>
+                  <filter id="glowFilter">
+                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                    <feMerge>
+                      <feMergeNode in="coloredBlur"/>
+                      <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                  </filter>
+                </defs>
+                <rect width="1000" height="500" fill="#070A12" rx="12"/>
+                <!-- World Map Continent Silhouettes -->
+                <path class="map-continent" d="M150,120 Q220,100 280,140 Q250,220 180,240 Q130,180 150,120 Z" />
+                <path class="map-continent" d="M250,270 Q320,290 300,420 Q240,400 230,320 Z" />
+                <path class="map-continent" d="M460,110 Q540,90 560,160 Q500,200 450,150 Z" />
+                <path class="map-continent" d="M470,220 Q560,210 570,360 Q490,380 460,260 Z" />
+                <path class="map-continent" d="M580,100 Q800,80 880,170 Q820,300 680,240 Q600,180 580,100 Z" />
+                <path class="map-continent" d="M750,330 Q860,320 840,420 Q740,410 750,330 Z" />
+                <!-- Dynamic Nodes & Arc Lines injected by JS -->
+                <g id="mapNodesGroup"></g>
+              </svg>
+            </div>
+          </div>
+          <div class="map-legend">
+            <span><span class="legend-dot dot-home"></span> Home Origin (Korea)</span>
+            <span><span class="legend-dot dot-cdn"></span> Verified Cloud / CDN</span>
+            <span><span class="legend-dot dot-foreign"></span> Global Remote Endpoint</span>
+          </div>
+        </div>
+
+        <div class="analytics-card">
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="radio" class="icon-amber"></i>
+              <span>ACTIVE OUTBOUND DESTINATIONS</span>
+            </div>
+          </div>
+          <div class="active-dest-list" id="activeDestList">
+            <div class="loading-spinner"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: DIAGNOSTIC TOOLBOX VIEW -->
+    <div id="viewDiagnostics" class="tab-view">
+      <!-- Top Grid: Local Wi-Fi/LAN Health Status -->
+      <div class="health-card" id="networkHealthCard">
+        <div class="health-icon-group">
+          <i data-lucide="activity" class="health-icon"></i>
+          <div>
+            <h4 id="healthTitle">LOCAL NETWORK & ADAPTER DIAGNOSTIC</h4>
+            <p id="healthSub" class="health-sub">Analyzing gateway latency & Wi-Fi stability...</p>
+          </div>
+        </div>
+        <div class="health-metrics">
+          <div class="health-metric-box">
+            <span class="metric-label">INTERFACE</span>
+            <span class="metric-val" id="metricInterface">Detecting...</span>
+          </div>
+          <div class="health-metric-box">
+            <span class="metric-label">SIGNAL QUALITY</span>
+            <span class="metric-val" id="metricSignal">100%</span>
+          </div>
+          <div class="health-metric-box">
+            <span class="metric-label">GATEWAY RTT</span>
+            <span class="metric-val" id="metricGateway">~1.2 ms</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="diag-tools-grid">
+        <!-- Tool 1: nslookup & Multi-DNS Benchmark Console -->
+        <div class="diag-tool-card">
+          <div class="tool-header">
+            <div class="tool-title">
+              <i data-lucide="search-code" class="icon-cyan"></i>
+              <span>NSLOOKUP & DNS BENCHMARK</span>
+            </div>
+          </div>
+          <div class="tool-input-row">
+            <input type="text" id="nslookupInput" placeholder="Enter domain (e.g. netflix.com, google.com)" value="netflix.com" onkeydown="if(event.key==='Enter') executeNslookup()">
+            <button class="btn-primary" onclick="executeNslookup()">
+              <i data-lucide="play"></i> Lookup & Benchmark
+            </button>
+          </div>
+          
+          <div class="dns-benchmark-results" id="dnsBenchmarkResults">
+            <p class="empty-text">Enter a domain and click Lookup to test DNS propagation & ISP speeds.</p>
+          </div>
+        </div>
+
+        <!-- Tool 2: Visual Hop Traceroute Explorer -->
+        <div class="diag-tool-card">
+          <div class="tool-header">
+            <div class="tool-title">
+              <i data-lucide="route" class="icon-amber"></i>
+              <span>VISUAL TRACEROUTE HOP EXPLORER</span>
+            </div>
+          </div>
+          <div class="tool-input-row">
+            <input type="text" id="tracerouteInput" placeholder="Target host or IP (e.g. 8.8.8.8, amazon.com)" value="8.8.8.8" onkeydown="if(event.key==='Enter') executeTraceroute()">
+            <button class="btn-primary" onclick="executeTraceroute()">
+              <i data-lucide="navigation"></i> Trace Path
+            </button>
+          </div>
+
+          <div class="traceroute-results" id="tracerouteResults">
+            <p class="empty-text">Traceroute maps the exact network routers and latency hops to the destination.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -378,15 +518,15 @@
     </div>
   </div>
 
-  <!-- Sockets / Connection Inspector Modal -->
+  <!-- Sockets / Connection Inspector Modal (Supercharged v3.0) -->
   <div class="modal-backdrop" id="connectionsModal" onclick="onBackdropClick(event, 'connectionsModal')">
-    <div class="modal-card modal-lg">
+    <div class="modal-card modal-xl">
       <div class="modal-header">
         <div class="modal-title-group">
           <div class="modal-icon"><i data-lucide="network"></i></div>
           <div>
-            <h3 id="connModalTitle">Active Sockets</h3>
-            <p id="connModalSub" class="modal-sub">Live TCP/UDP endpoint connections</p>
+            <h3 id="connModalTitle">Active Sockets & Route Telemetry</h3>
+            <p id="connModalSub" class="modal-sub">Live TCP/UDP endpoint connections, GeoIP & Latency</p>
           </div>
         </div>
         <button class="btn-close" onclick="closeConnectionsModal()"><i data-lucide="x"></i></button>
@@ -398,13 +538,17 @@
             <thead>
               <tr>
                 <th>PROTOCOL</th>
-                <th>LOCAL ADDRESS</th>
+                <th>LOCAL ADDR</th>
                 <th>REMOTE ENDPOINT</th>
+                <th>SERVICE / DOMAIN</th>
+                <th>GEO / ORG</th>
+                <th>LATENCY</th>
                 <th>STATUS</th>
+                <th class="text-right">ACTION</th>
               </tr>
             </thead>
             <tbody id="connTableBody">
-              <tr class="empty-row"><td colspan="4">Loading active endpoints...</td></tr>
+              <tr class="empty-row"><td colspan="8">Loading active endpoints...</td></tr>
             </tbody>
           </table>
         </div>

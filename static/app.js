@@ -650,8 +650,54 @@ function clearAllPolicies() {
     .catch(err => alert("Clear error: " + err));
 }
 
-/* API Calls */
+/* API Calls & Instant Refresh */
+function refreshLimitsAndViews() {
+  fetch('/api/limits')
+    .then(res => res.json())
+    .then(data => {
+      activeLimits = data || {};
+      const ruleCount = Object.keys(activeLimits).length;
+      const countEl = document.getElementById('tabRulesCount');
+      if (countEl) countEl.innerText = ruleCount;
+
+      const gLimit = activeLimits['global'];
+      const gBadge = document.getElementById('globalLimitBadge');
+      if (gBadge) {
+        if (gLimit) {
+          gBadge.innerText = `LIMIT: ${formatKbps(gLimit.kbps)}`;
+          gBadge.className = 'trend-tag tag-amber';
+        } else {
+          gBadge.innerText = 'UNLIMITED';
+          gBadge.className = 'trend-tag tag-cyan';
+        }
+      }
+
+      renderFullPoliciesView();
+      renderProcesses();
+    })
+    .catch(err => console.error("Error refreshing limits:", err));
+}
+
 function setLimit(target, appExe, limitKbps, priority = 'normal') {
+  // Optimistic instant UI update
+  if (limitKbps > 0) {
+    activeLimits[target] = {
+      target: target,
+      app_exe: appExe || target,
+      kbps: limitKbps,
+      priority: priority,
+      active: true
+    };
+  } else {
+    delete activeLimits[target];
+  }
+  const ruleCount = Object.keys(activeLimits).length;
+  const countEl = document.getElementById('tabRulesCount');
+  if (countEl) countEl.innerText = ruleCount;
+
+  renderFullPoliciesView();
+  renderProcesses();
+
   fetch('/api/limit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -669,15 +715,34 @@ function setLimit(target, appExe, limitKbps, priority = 'normal') {
     } else {
       alert(`Limit application warning: ${data.detail || data.message}`);
     }
+    refreshLimitsAndViews();
   })
-  .catch(err => alert("Failed to communicate with server: " + err));
+  .catch(err => {
+    alert("Failed to communicate with server: " + err);
+    refreshLimitsAndViews();
+  });
 }
 
 function removeLimit(target) {
+  // Optimistic instant UI update
+  delete activeLimits[target];
+  const ruleCount = Object.keys(activeLimits).length;
+  const countEl = document.getElementById('tabRulesCount');
+  if (countEl) countEl.innerText = ruleCount;
+
+  renderFullPoliciesView();
+  renderProcesses();
+
   fetch(`/api/limit/${encodeURIComponent(target)}`, { method: 'DELETE' })
     .then(res => res.json())
-    .then(data => console.log(data.message))
-    .catch(err => console.error("Remove limit error:", err));
+    .then(data => {
+      console.log(data.message);
+      refreshLimitsAndViews();
+    })
+    .catch(err => {
+      console.error("Remove limit error:", err);
+      refreshLimitsAndViews();
+    });
 }
 
 function escapeHtml(str) {

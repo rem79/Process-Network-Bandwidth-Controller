@@ -112,9 +112,9 @@
           <div class="global-limit-body">
             <p class="desc-text">Apply system-wide Windows NetQos bandwidth rule.</p>
             <div class="preset-buttons">
-              <button class="btn-preset" onclick="setGlobalPreset(500)">500 KB/s</button>
-              <button class="btn-preset" onclick="setGlobalPreset(2048)">2 MB/s</button>
               <button class="btn-preset" onclick="setGlobalPreset(10240)">10 MB/s</button>
+              <button class="btn-preset" onclick="setGlobalPreset(102400)">100 MB/s</button>
+              <button class="btn-preset" onclick="setGlobalPreset(1048576)">1 GB/s</button>
               <button class="btn-preset btn-clear" onclick="removeGlobalLimit()">Off</button>
             </div>
             <button class="btn-primary w-full" onclick="openLimitModal('global', ' 전체 시스템 (Global)')">

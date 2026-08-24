@@ -364,6 +364,92 @@ body {
   border-color: rgba(255, 0, 84, 0.3);
 }
 
+/* Quick Numeric Input Group */
+.quick-input-group {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+.input-number-quick {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+.input-number-quick:focus {
+  border-color: var(--accent-cyan);
+}
+.select-unit-quick {
+  background: var(--bg-input);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  outline: none;
+  cursor: pointer;
+}
+.btn-quick-apply {
+  background: rgba(0, 242, 254, 0.15);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-quick-apply:hover {
+  background: var(--accent-cyan);
+  color: #070A12;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.4);
+}
+
+/* Modal Custom Value & Unit Row */
+.custom-value-unit-row {
+  display: flex;
+  gap: 8px;
+}
+.custom-value-unit-row input {
+  flex: 2;
+  background: var(--bg-input);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+.custom-value-unit-row input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+}
+.custom-value-unit-row select {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, #00F2FE 0%, #4FACFE 100%);
   color: #070A12;

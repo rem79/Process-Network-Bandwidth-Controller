@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('static', 'static'), ('qos_rules.json', '.')]
+datas = [('C:\\Users\\ilios\\AppData\\Roaming\\Python\\Python312\\site-packages\\webview', 'webview'), ('C:\\Users\\ilios\\AppData\\Roaming\\Python\\Python312\\site-packages\\clr_loader', 'clr_loader'), ('static', 'static'), ('qos_rules.json', '.')]
 binaries = []
 hiddenimports = ['pystray', 'PIL', 'history_db', 'sqlite3']
 tmp_ret = collect_all('webview')

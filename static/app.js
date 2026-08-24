@@ -387,27 +387,55 @@ function closeLimitModal() {
 }
 
 function selectModalPreset(kbps) {
-  updateModalValueDisplays(kbps);
+  updateModalValueDisplays(kbps, true);
 }
 
 function onSliderChange(val) {
-  updateModalValueDisplays(parseInt(val, 10));
+  updateModalValueDisplays(parseInt(val, 10), true);
 }
 
-function onNumberInputChange(val) {
-  const num = parseInt(val, 10) || 0;
-  updateModalValueDisplays(num);
+function onCustomUnitInputChange() {
+  const val = parseFloat(document.getElementById('customLimitValueInput').value) || 0;
+  const unit = document.getElementById('customLimitUnitSelect').value;
+  let kbps = 0;
+  if (unit === 'KB') {
+    kbps = Math.round(val);
+  } else if (unit === 'MB') {
+    kbps = Math.round(val * 1024);
+  } else if (unit === 'GB') {
+    kbps = Math.round(val * 1024 * 1024);
+  }
+  updateModalValueDisplays(kbps, false);
 }
 
-function updateModalValueDisplays(kbps) {
-  document.getElementById('limitSlider').value = Math.min(104857600, kbps);
-  document.getElementById('customLimitInput').value = kbps;
+function updateModalValueDisplays(kbps, updateUnitInputs = true) {
+  const boundedKbps = Math.max(0, Math.min(104857600, kbps));
+  document.getElementById('limitSlider').value = boundedKbps;
+  document.getElementById('customLimitInput').value = boundedKbps;
+
+  if (updateUnitInputs) {
+    const valInput = document.getElementById('customLimitValueInput');
+    const unitSelect = document.getElementById('customLimitUnitSelect');
+    if (valInput && unitSelect) {
+      if (boundedKbps >= 1048576) {
+        valInput.value = (boundedKbps / 1048576).toFixed(boundedKbps % 1048576 === 0 ? 0 : 2);
+        unitSelect.value = 'GB';
+      } else if (boundedKbps >= 1024) {
+        valInput.value = (boundedKbps / 1024).toFixed(boundedKbps % 1024 === 0 ? 0 : 2);
+        unitSelect.value = 'MB';
+      } else {
+        valInput.value = boundedKbps;
+        unitSelect.value = 'KB';
+      }
+    }
+  }
 
   const display = document.getElementById('modalValDisplay');
-  if (kbps <= 0) {
+  if (boundedKbps <= 0) {
     display.innerText = "UNLIMITED (Remove QoS Policy)";
   } else {
-    display.innerText = `${formatKbps(kbps)} (${kbps.toLocaleString()} KB/s)`;
+    const mbps = (boundedKbps * 8 / 1000).toFixed(2);
+    display.innerText = `${formatKbps(boundedKbps)} (${boundedKbps.toLocaleString()} KB/s | ~${mbps} Mbps)`;
   }
 }
 
@@ -419,6 +447,24 @@ function submitLimitModal() {
 }
 
 function setGlobalPreset(kbps) {
+  setLimit('global', '*', kbps);
+}
+
+function applyQuickGlobalLimit() {
+  const val = parseFloat(document.getElementById('quickGlobalValue').value) || 0;
+  const unit = document.getElementById('quickGlobalUnit').value;
+  if (val <= 0) {
+    showNotification("Please enter a value greater than 0", "warning");
+    return;
+  }
+  let kbps = 0;
+  if (unit === 'KB') {
+    kbps = Math.round(val);
+  } else if (unit === 'MB') {
+    kbps = Math.round(val * 1024);
+  } else if (unit === 'GB') {
+    kbps = Math.round(val * 1024 * 1024);
+  }
   setLimit('global', '*', kbps);
 }
 

@@ -28,14 +28,14 @@ def build():
         "--add-data", f"{clr_dir};clr_loader",
         "--add-data", "static;static",
         "--add-data", "qos_rules.json;.",
-        "--name", "Process Network Bandwidth Controller",
+        "--name", "NetworkSentinelApp",
         "main_desktop.py"
     ]
 
     print("Running command:", " ".join(cmd))
     res = subprocess.run(cmd, cwd=os.path.dirname(__file__))
     if res.returncode == 0:
-        exe_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "dist", "Process Network Bandwidth Controller", "Process Network Bandwidth Controller.exe"))
+        exe_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "dist", "NetworkSentinelApp", "NetworkSentinelApp.exe"))
         print("\n[SUCCESS] Compiled standalone executable successfully!")
         print(f"EXE Location: {exe_path}")
     else:

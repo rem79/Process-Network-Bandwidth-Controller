@@ -117,6 +117,16 @@
               <button class="btn-preset" onclick="setGlobalPreset(1048576)">1 GB/s</button>
               <button class="btn-preset btn-clear" onclick="removeGlobalLimit()">Off</button>
             </div>
+            <!-- Direct Numeric Input Form (1 KB/s ~ 100 GB/s) -->
+            <div class="quick-input-group">
+              <input type="number" id="quickGlobalValue" min="1" step="any" value="10" placeholder="10" class="input-number-quick">
+              <select id="quickGlobalUnit" class="select-unit-quick">
+                <option value="KB">KB/s</option>
+                <option value="MB" selected>MB/s</option>
+                <option value="GB">GB/s</option>
+              </select>
+              <button class="btn-quick-apply" onclick="applyQuickGlobalLimit()">Apply</button>
+            </div>
             <button class="btn-primary w-full" onclick="openLimitModal('global', ' 전체 시스템 (Global)')">
               <i data-lucide="settings-2"></i> Custom Global Limit
             </button>
@@ -143,8 +153,8 @@
             </div>
 
             <div class="search-box">
-              <i data-lucide="search" class="search-icon"></i>
-              <input type="text" id="searchInput" placeholder="Search process or PID..." oninput="filterProcesses()">
+              <i data-lucide="search"></i>
+              <input type="text" id="searchInput" placeholder="Search by name, PID, path..." oninput="onSearchInput(this.value)">
             </div>
 
             <div class="sort-selector">
@@ -166,7 +176,7 @@
           <table class="antigravity-table">
             <thead>
               <tr>
-                <th>PROCESS & EXECUTABLE</th>
+                <th>APPLICATION</th>
                 <th>PID</th>
                 <th>CONNECTIONS</th>
                 <th>DOWNLOAD SPEED</th>
@@ -240,31 +250,31 @@
     <!-- TAB 3: ACTIVE QOS POLICIES VIEW -->
     <div id="viewPolicies" class="tab-view">
       <div class="policies-container">
-        <div class="card-header policy-header">
-          <div class="card-title">
-            <i data-lucide="shield-check" class="icon-emerald"></i>
-            <span>CONFIGURED QOS POLICIES</span>
+        <div class="policies-header">
+          <div class="policies-title">
+            <i data-lucide="shield-check"></i>
+            <h3>CONFIGURED QOS POLICIES</h3>
           </div>
-          <button class="btn-danger-outline" onclick="clearAllPolicies()">
+          <button class="btn-danger" onclick="clearAllLimits()">
             <i data-lucide="trash-2"></i> Clear All Policies
           </button>
         </div>
-        <div class="policy-list-grid" id="fullPoliciesGrid">
-          <p class="empty-text">No QoS limits currently active.</p>
+        <div class="policies-grid" id="fullPoliciesGrid">
+          <div class="loading-spinner"></div>
         </div>
       </div>
     </div>
-  </div>
+  </main>
 
-  <!-- Speed Limit Config Modal -->
+  <!-- QoS Limit Modal -->
   <div class="modal-backdrop" id="limitModal">
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title-group">
           <div class="modal-icon"><i data-lucide="gauge"></i></div>
           <div>
-            <h3 id="modalTargetTitle">Configure Speed Limit</h3>
-            <p id="modalTargetSub" class="modal-sub">Set Windows NetQos bandwidth throttle</p>
+            <h3 id="modalTitle">Configure Speed Limit</h3>
+            <p id="modalSub" class="modal-sub">Windows NetQosPolicy Bandwidth Capping</p>
           </div>
         </div>
         <button class="btn-close" onclick="closeLimitModal()"><i data-lucide="x"></i></button>
@@ -272,8 +282,11 @@
 
       <div class="modal-body">
         <div class="form-group">
-          <label>BANDWIDTH LIMIT PRESETS (UP TO 100 GB/s)</label>
+          <label>BANDWIDTH LIMIT PRESETS (10 KB/s ~ 100 GB/s)</label>
           <div class="preset-pill-grid">
+            <button class="pill-btn" onclick="selectModalPreset(10)">10 KB/s</button>
+            <button class="pill-btn" onclick="selectModalPreset(100)">100 KB/s</button>
+            <button class="pill-btn" onclick="selectModalPreset(500)">500 KB/s</button>
             <button class="pill-btn" onclick="selectModalPreset(1024)">1 MB/s</button>
             <button class="pill-btn" onclick="selectModalPreset(10240)">10 MB/s</button>
             <button class="pill-btn" onclick="selectModalPreset(102400)">100 MB/s</button>
@@ -286,16 +299,23 @@
 
         <div class="form-group">
           <div class="label-row">
-            <label for="limitSlider">CUSTOM SPEED LIMIT (KB/s)</label>
+            <label for="limitSlider">CUSTOM SPEED LIMIT (1 KB/s ~ 100 GB/s)</label>
             <span class="value-display" id="modalValDisplay">1024 KB/s (1.0 MB/s)</span>
           </div>
-          <input type="range" id="limitSlider" min="0" max="104857600" step="1024" value="1024" oninput="onSliderChange(this.value)">
+          <input type="range" id="limitSlider" min="0" max="104857600" step="1" value="1024" oninput="onSliderChange(this.value)">
         </div>
 
         <div class="form-group row-inputs">
           <div>
-            <label for="customLimitInput">EXACT VALUE (KB/s)</label>
-            <input type="number" id="customLimitInput" min="0" value="1024" oninput="onNumberInputChange(this.value)">
+            <label for="customLimitValueInput">EXACT VALUE & UNIT</label>
+            <div class="custom-value-unit-row">
+              <input type="number" id="customLimitValueInput" min="0" step="any" value="1.0" oninput="onCustomUnitInputChange()">
+              <select id="customLimitUnitSelect" class="select-input" onchange="onCustomUnitInputChange()">
+                <option value="KB">KB/s</option>
+                <option value="MB" selected>MB/s</option>
+                <option value="GB">GB/s</option>
+              </select>
+            </div>
           </div>
           <div>
             <label>TRAFFIC PRIORITY</label>
@@ -304,8 +324,8 @@
               <option value="high">High Priority (DSCP 46)</option>
               <option value="low">Low Priority (DSCP 10)</option>
             </select>
-          </div>
         </div>
+        <input type="hidden" id="customLimitInput" value="1024">
 
         <div class="form-group">
           <label>MATCH TARGET</label>

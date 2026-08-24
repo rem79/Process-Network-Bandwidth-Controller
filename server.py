@@ -3,6 +3,7 @@ import time
 import os
 import ctypes
 import logging
+import sys
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
@@ -18,10 +19,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 app = FastAPI(title="Antigravity Network Sentinel", version="2.0.0")
 
-# Serve static frontend files
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+# Serve static frontend files (support PyInstaller bundle)
+base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(base_dir, "static")
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 
 # Helper for formatted bytes (supports up to TB/s, GB/s, MB/s)
 def format_bytes(bytes_num: float) -> str:

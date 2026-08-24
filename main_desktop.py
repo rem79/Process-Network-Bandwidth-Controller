@@ -3,16 +3,29 @@ import os
 import ctypes
 import threading
 import time
-import uvicorn
-import webview
+import multiprocessing
+import logging
 from PIL import Image, ImageDraw
 import pystray
+import webview
 
 import autostart_manager
+
+# Setup Logging in AppData
+APPDATA_DIR = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'AntigravityNetworkSentinel')
+os.makedirs(APPDATA_DIR, exist_ok=True)
+LOG_FILE = os.path.join(APPDATA_DIR, "desktop.log")
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logging.info("Desktop Sentinel App Starting...")
 
 # Global Window Handle
 app_window = None
 tray_icon = None
+
 
 def is_admin():
     try:
@@ -45,8 +58,12 @@ def elevate_admin():
             print(f"Failed to elevate privileges: {e}")
 
 def run_server():
-    from server import app
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="error")
+    try:
+        import uvicorn
+        from server import app
+        uvicorn.run(app, host="127.0.0.1", port=8000, log_level="error")
+    except Exception as e:
+        logging.error(f"Error running uvicorn server: {e}", exc_info=True)
 
 def create_tray_image():
     """
@@ -73,7 +90,7 @@ def show_window(icon=None, item=None):
             app_window.show()
             app_window.restore()
         except Exception as e:
-            print(f"Error restoring window: {e}")
+            logging.error(f"Error restoring window: {e}")
 
 def toggle_autostart_menu(icon=None, item=None):
     current = autostart_manager.is_autostart_enabled()
@@ -85,7 +102,10 @@ def is_autostart_checked(item):
 def quit_app(icon=None, item=None):
     global tray_icon
     if tray_icon:
-        tray_icon.stop()
+        try:
+            tray_icon.stop()
+        except Exception:
+            pass
     os._exit(0)
 
 def on_closing():
@@ -99,16 +119,19 @@ def on_closing():
 
 def setup_tray():
     global tray_icon
-    menu = pystray.Menu(
-        pystray.MenuItem("👁 Open Controller Dashboard", show_window, default=True),
-        pystray.MenuItem("🔄 Run on Windows Boot", toggle_autostart_menu, checked=is_autostart_checked),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem("❌ Exit Controller", quit_app)
-    )
+    try:
+        menu = pystray.Menu(
+            pystray.MenuItem("👁 Open Controller Dashboard", show_window, default=True),
+            pystray.MenuItem("🔄 Run on Windows Boot", toggle_autostart_menu, checked=is_autostart_checked),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("❌ Exit Controller", quit_app)
+        )
 
-    image = create_tray_image()
-    tray_icon = pystray.Icon("ProcessNetworkBandwidthController", image, "Process Network Bandwidth Controller", menu)
-    tray_icon.run()
+        image = create_tray_image()
+        tray_icon = pystray.Icon("ProcessNetworkBandwidthController", image, "Process Network Bandwidth Controller", menu)
+        tray_icon.run()
+    except Exception as e:
+        logging.error(f"Error starting tray icon: {e}", exc_info=True)
 
 def main():
     global app_window
@@ -116,17 +139,17 @@ def main():
     # 1. Force Administrator privileges
     elevate_admin()
 
-    # 2. Start FastAPI server thread
+    logging.info("Starting background FastAPI server thread...")
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
-    # 3. Start System Tray Icon thread
+    logging.info("Starting background System Tray thread...")
     tray_thread = threading.Thread(target=setup_tray, daemon=True)
     tray_thread.start()
 
     time.sleep(1.0)
 
-    # 4. Open PyWebView Desktop Window
+    logging.info("Creating PyWebView desktop window...")
     app_window = webview.create_window(
         title="Process Network Bandwidth Controller",
         url="http://127.0.0.1:8000",
@@ -137,10 +160,12 @@ def main():
         text_select=True
     )
 
-    # Register window close event -> minimize to system tray
     app_window.events.closing += on_closing
 
+    logging.info("Starting PyWebView event loop...")
     webview.start(private_mode=False)
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()
+

@@ -82,6 +82,12 @@ class TestV3Suite(unittest.TestCase):
         # Port Test endpoint
         req_port = server.PortTestRequest(host="127.0.0.1", port=80)
         res_port = server.port_test_endpoint(req_port)
+        # IPConfig endpoint test
+        res_ipconfig = server.ipconfig_endpoint()
+        self.assertEqual(res_ipconfig["status"], "ok")
+        self.assertIn("raw_output", res_ipconfig)
+        self.assertIsInstance(res_ipconfig["adapters"], list)
+
         self.assertIn("status", res_port)
         self.assertIn("service", res_port)
 

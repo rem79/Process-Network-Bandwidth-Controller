@@ -10,6 +10,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Leaflet.js Interactive Map CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <link rel="stylesheet" href="/static/style.css">
@@ -35,14 +38,14 @@
         <div class="status-badge" id="autostartStatus" onclick="toggleAutostartUI()" style="cursor: pointer;" title="Click to toggle Windows Startup">
           <i data-lucide="power"></i> <span id="autostartText">Auto-Start: OFF</span>
         </div>
-        <div class="status-badge" id="adminStatus">
+        <div class="status-badge" id="adminStatus" onclick="onAdminBadgeClick()" style="cursor: pointer;" title="Click to request Administrator privileges if in User Mode">
           <i data-lucide="shield-alert"></i> <span id="adminText">Checking Privileges...</span>
         </div>
-        <button class="status-badge btn-playbook-trigger" onclick="openPlaybookModal()" title="SAP/TMS 및 실무 네트워크 장애 진단 매뉴얼 & 활용 팁">
-          <i data-lucide="book-open"></i> <span>실무 진단 매뉴얼 & 팁</span>
+        <button class="status-badge btn-playbook-trigger" onclick="openPlaybookModal()" title="Field Diagnostics Manual & Troubleshooting SOP">
+          <i data-lucide="book-open"></i> <span>Field Ops Manual</span>
         </button>
-        <button class="status-badge btn-export-trigger" onclick="exportDiagnosticReport()" title="현재 네트워크 상태 및 진단 결과 단일 HTML 보고서로 내보내기">
-          <i data-lucide="download"></i> <span>진단 리포트 저장</span>
+        <button class="status-badge btn-export-trigger" onclick="exportDiagnosticReport()" title="Export current network health and telemetry to a standalone HTML report">
+          <i data-lucide="download"></i> <span>Export Diagnostic Report</span>
         </button>
         <div class="status-badge live-pulse" id="connectionStatus">
           <span class="pulse-dot"></span> <span id="connText">CONNECTING</span>
@@ -178,6 +181,8 @@
                 <option value="connections">Socket Connections</option>
                 <option value="name">Process Name</option>
                 <option value="pid">PID</option>
+                <option value="cpu">CPU Usage (%)</option>
+                <option value="ram">RAM Usage (MB)</option>
               </select>
             </div>
           </div>
@@ -203,8 +208,11 @@
                 <th class="sortable-th" onclick="sortByHeader('up')" title="Sort by Upload Speed">
                   <div class="th-content"><span>UPLOAD SPEED</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-up"></i></div>
                 </th>
-                <th class="sortable-th" onclick="sortByHeader('cpu')" title="Sort by CPU / RAM Usage">
-                  <div class="th-content"><span>CPU / RAM</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-cpu"></i></div>
+                <th class="sortable-th" onclick="sortByHeader('cpu')" title="Sort by CPU Usage (%)">
+                  <div class="th-content"><span>CPU (%)</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-cpu"></i></div>
+                </th>
+                <th class="sortable-th" onclick="sortByHeader('ram')" title="Sort by Memory Usage (MB)">
+                  <div class="th-content"><span>RAM (MB)</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-ram"></i></div>
                 </th>
                 <th class="sortable-th" onclick="sortByHeader('limit')" title="Sort by QoS Throttling Status">
                   <div class="th-content"><span>LIMIT STATUS</span><i data-lucide="chevrons-up-down" class="sort-icon" id="sortIcon-limit"></i></div>
@@ -214,7 +222,7 @@
             </thead>
             <tbody id="processTableBody">
               <tr class="empty-row">
-                <td colspan="8">
+                <td colspan="9">
                   <div class="loading-spinner"></div>
                   <p>Initializing process telemetry stream...</p>
                 </td>
@@ -230,16 +238,29 @@
       <div class="analytics-layout">
         <!-- Top Bandwidth Consumers Card -->
         <div class="analytics-card">
-          <div class="card-header">
+          <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
             <div class="card-title">
               <i data-lucide="trophy" class="icon-amber"></i>
-              <span>TOP BANDWIDTH CONSUMERS (LAST 24H)</span>
+              <span id="topConsumersTitle">BANDWIDTH CONSUMERS (TODAY)</span>
+              <span class="count-badge" id="topConsumersCountBadge" style="margin-left: 6px;">0 Apps</span>
             </div>
-            <button class="btn-sm-secondary" onclick="loadAnalyticsData()">
-              <i data-lucide="refresh-cw"></i> Refresh
-            </button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn-sm-secondary" id="btnRefreshAnalytics" onclick="loadAnalyticsData(true)" title="Refresh with latest telemetry data">
+                <i data-lucide="refresh-cw" id="analyticsRefreshIcon"></i> <span>Refresh</span>
+              </button>
+            </div>
           </div>
-          <div class="top-list-container" id="topConsumersList">
+          <!-- Time Range Selector Chips (English Cyberpunk style) -->
+          <div class="category-filters" style="margin-bottom: 12px; padding: 0 4px;">
+            <button class="filter-chip active" id="chipPeriod-today" onclick="selectAnalyticsPeriod('today')">Today</button>
+            <button class="filter-chip" id="chipPeriod-10m" onclick="selectAnalyticsPeriod('10m')">10m</button>
+            <button class="filter-chip" id="chipPeriod-1h" onclick="selectAnalyticsPeriod('1h')">1h</button>
+            <button class="filter-chip" id="chipPeriod-3h" onclick="selectAnalyticsPeriod('3h')">3h</button>
+            <button class="filter-chip" id="chipPeriod-6h" onclick="selectAnalyticsPeriod('6h')">6h</button>
+            <button class="filter-chip" id="chipPeriod-12h" onclick="selectAnalyticsPeriod('12h')">12h</button>
+            <button class="filter-chip" id="chipPeriod-24h" onclick="selectAnalyticsPeriod('24h')">24h</button>
+          </div>
+          <div class="top-list-container" id="topConsumersList" style="min-height: 540px; max-height: calc(100vh - 280px); overflow-y: auto;">
             <div class="loading-spinner"></div>
           </div>
         </div>
@@ -290,9 +311,21 @@
           <div class="policies-title">
             <i data-lucide="shield-check"></i>
             <h3>CONFIGURED QOS POLICIES</h3>
+            <span class="status-badge-sm status-admin-tag" id="policiesAdminBadge" style="margin-left: 8px; font-size: 0.75rem;">
+              <i data-lucide="shield"></i> <span>ADMIN REQUIRED</span>
+            </span>
           </div>
           <button class="btn-danger" onclick="clearAllPolicies()">
             <i data-lucide="trash-2"></i> Clear All Policies
+          </button>
+        </div>
+        <div id="policiesAdminWarning" style="display: none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; color: #F59E0B; font-size: 0.88rem; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="alert-triangle"></i>
+            <span>현재 <b>일반 사용자 모드</b>입니다. Windows QoS 커널 정책을 생성/수정/삭제하려면 관리자 권한이 필요합니다.</span>
+          </div>
+          <button class="btn-sm-cyan" onclick="requestElevateAdmin()" style="margin-left: 12px; white-space: nowrap;">
+            <i data-lucide="shield-check"></i> 관리자 권한으로 재실행
           </button>
         </div>
         <div class="policies-grid" id="fullPoliciesGrid">
@@ -308,46 +341,24 @@
           <div class="card-header">
             <div class="card-title">
               <i data-lucide="globe" class="icon-cyan"></i>
-              <span>GLOBAL CYBER TRAFFIC RADAR</span>
+              <span>GLOBAL CYBER TRAFFIC RADAR (REAL-TIME WORLD MAP)</span>
             </div>
-            <button class="btn-sm-secondary" onclick="loadGlobalMapData()">
-              <i data-lucide="refresh-cw"></i> Refresh Map
-            </button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn-sm-secondary" onclick="resetMapZoom()" title="Reset map view to default">
+                <i data-lucide="compass"></i> Reset View
+              </button>
+              <button class="btn-sm-secondary" id="btnRefreshMap" onclick="loadGlobalMapData(true)">
+                <i data-lucide="refresh-cw" id="mapRefreshIcon"></i> Refresh Map
+              </button>
+            </div>
           </div>
-          <div class="map-visual-container">
-            <div id="worldMapCanvasContainer" class="world-map-svg-wrap">
-              <svg viewBox="0 0 1000 500" class="neon-world-map" id="worldMapSvg">
-                <!-- Cyber Grid Lines -->
-                <defs>
-                  <linearGradient id="cyberLineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#00F2FE" stop-opacity="0.8"/>
-                    <stop offset="100%" stop-color="#9D4EDD" stop-opacity="0.8"/>
-                  </linearGradient>
-                  <filter id="glowFilter">
-                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                    <feMerge>
-                      <feMergeNode in="coloredBlur"/>
-                      <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                  </filter>
-                </defs>
-                <rect width="1000" height="500" fill="#070A12" rx="12"/>
-                <!-- World Map Continent Silhouettes -->
-                <path class="map-continent" d="M150,120 Q220,100 280,140 Q250,220 180,240 Q130,180 150,120 Z" />
-                <path class="map-continent" d="M250,270 Q320,290 300,420 Q240,400 230,320 Z" />
-                <path class="map-continent" d="M460,110 Q540,90 560,160 Q500,200 450,150 Z" />
-                <path class="map-continent" d="M470,220 Q560,210 570,360 Q490,380 460,260 Z" />
-                <path class="map-continent" d="M580,100 Q800,80 880,170 Q820,300 680,240 Q600,180 580,100 Z" />
-                <path class="map-continent" d="M750,330 Q860,320 840,420 Q740,410 750,330 Z" />
-                <!-- Dynamic Nodes & Arc Lines injected by JS -->
-                <g id="mapNodesGroup"></g>
-              </svg>
-            </div>
+          <div class="map-visual-container" style="position: relative;">
+            <div id="cyberLeafletMap" class="cyber-leaflet-map-wrap"></div>
           </div>
           <div class="map-legend">
             <span><span class="legend-dot dot-home"></span> Home Origin (Korea)</span>
-            <span><span class="legend-dot dot-cdn"></span> Verified Cloud / CDN</span>
-            <span><span class="legend-dot dot-foreign"></span> Global Remote Endpoint</span>
+            <span><span class="legend-dot dot-cdn"></span> Verified Cloud / Domestic IP</span>
+            <span><span class="legend-dot dot-foreign"></span> Global Foreign Remote Node</span>
           </div>
         </div>
 
@@ -367,7 +378,7 @@
 
     <!-- TAB 5: DIAGNOSTIC TOOLBOX VIEW -->
     <div id="viewDiagnostics" class="tab-view">
-      <!-- Top Grid: Local Wi-Fi/LAN Health Status -->
+      <!-- Top 1: Local Wi-Fi/LAN Health Status Banner -->
       <div class="health-card" id="networkHealthCard">
         <div class="health-icon-group">
           <i data-lucide="activity" class="health-icon"></i>
@@ -393,7 +404,61 @@
       </div>
 
       <div class="diag-tools-grid">
-        <!-- Tool 1: nslookup & Multi-DNS Benchmark Console -->
+        <!-- Top 2: NIC Adapter & IPConfig (/all) Live Inspector -->
+        <div class="diag-tool-card diag-tool-full" id="ipconfigToolCard">
+          <div class="tool-header" style="flex-wrap: wrap; gap: 8px;">
+            <div class="tool-title">
+              <i data-lucide="terminal" class="icon-cyan"></i>
+              <span>NIC ADAPTER & IPCONFIG (/ALL) INSPECTOR</span>
+              <span class="count-badge" id="ipconfigAdapterCount" style="margin-left: 6px;">Active Adapters</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn-sm-secondary" onclick="toggleIpconfigRawView()" title="Toggle full raw terminal text">
+                <i data-lucide="file-text"></i> <span id="ipconfigToggleText">Show Raw Console</span>
+              </button>
+              <button class="btn-sm-secondary" onclick="copyIpconfigRaw()" title="Copy entire ipconfig /all output to clipboard">
+                <i data-lucide="copy"></i> <span>Copy Output</span>
+              </button>
+              <button class="btn-sm-secondary" id="btnRefreshIpconfig" onclick="loadIpconfigData(true)" title="Refresh network adapter configuration">
+                <i data-lucide="refresh-cw" id="ipconfigRefreshIcon"></i> <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+          <div class="flush-repair-desc">
+            <p><i data-lucide="info"></i> 사용자 PC의 모든 물리/무선 네트워크 카드(NIC), IPv4 주소, 게이트웨이, MAC 주소, DNS 서버 설정을 실시간으로 진단하고 <code>ipconfig /all</code> 원문을 제공합니다.</p>
+          </div>
+          
+          <!-- Parsed Adapter Cards Grid -->
+          <div id="ipconfigAdaptersGrid" class="ipconfig-adapters-grid" style="margin-top: 14px;">
+            <div class="loading-spinner"></div>
+          </div>
+
+          <!-- Raw Console Box (Collapsible) -->
+          <div id="ipconfigRawContainer" style="display: none; margin-top: 14px;">
+            <pre id="ipconfigRawPre" class="ipconfig-raw-console"></pre>
+          </div>
+        </div>
+
+        <!-- Top 3: One-Click Network Emergency Repair (Flush & Purge) -->
+        <div class="diag-tool-card diag-tool-full">
+          <div class="tool-header">
+            <div class="tool-title">
+              <i data-lucide="refresh-cw" class="icon-emerald"></i>
+              <span>ONE-CLICK NETWORK EMERGENCY REPAIR (원클릭 네트워크 응급 복구)</span>
+            </div>
+            <button class="btn-emerald" id="btnFlushNetwork" onclick="executeNetworkFlush()">
+              <i data-lucide="zap"></i> Run Emergency Flush & Repair
+            </button>
+          </div>
+          <div class="flush-repair-desc">
+            <p><i data-lucide="info"></i> PC 네트워크 렉, DNS 캐시 꼬임, 공유기 ARP 테이블 충돌 발생 시 <b>1초 만에 윈도우 네트워크 스택을 깨끗이 초기화</b>하여 통신을 정상 복구합니다.</p>
+          </div>
+          <div class="flush-action-log" id="flushActionLog">
+            <div class="flush-idle-msg">Ready to repair network stack. Click the button above when experiencing connection freezes.</div>
+          </div>
+        </div>
+
+        <!-- Tool 4-1: nslookup & Multi-DNS Benchmark Console -->
         <div class="diag-tool-card">
           <div class="tool-header">
             <div class="tool-title">
@@ -401,19 +466,20 @@
               <span>NSLOOKUP & DNS BENCHMARK</span>
             </div>
           </div>
-          <div class="tool-input-row">
-            <input type="text" id="nslookupInput" placeholder="Enter domain (e.g. netflix.com, google.com)" value="netflix.com" onkeydown="if(event.key==='Enter') executeNslookup()">
-            <button class="btn-primary" onclick="executeNslookup()">
+          <div class="tool-input-row" style="flex-wrap: wrap; gap: 8px;">
+            <input type="text" id="nslookupInput" placeholder="Domain (e.g. netflix.com, erp.company.local)" value="netflix.com" style="flex: 2; min-width: 160px;" onkeydown="if(event.key==='Enter') executeNslookup()">
+            <input type="text" id="nslookupCustomDns" placeholder="+ Custom DNS IP (Optional, e.g. 10.10.1.5)" title="기본으로 현재 PC의 사내 DNS가 자동 체크되며, 추가로 비교할 DNS가 있을 때 입력합니다." style="flex: 1.5; min-width: 160px; font-size: 0.8rem;" onkeydown="if(event.key==='Enter') executeNslookup()">
+            <button class="btn-primary" onclick="executeNslookup()" style="white-space: nowrap;">
               <i data-lucide="play"></i> Lookup & Benchmark
             </button>
           </div>
           
           <div class="dns-benchmark-results" id="dnsBenchmarkResults">
-            <p class="empty-text">Enter a domain and click Lookup to test DNS propagation & ISP speeds.</p>
+            <p class="empty-text">Auto-benchmarks System/Corp DNS + Public ISPs. Enter optional custom DNS to test both simultaneously.</p>
           </div>
         </div>
 
-        <!-- Tool 2: Visual Hop Traceroute Explorer -->
+        <!-- Tool 4-2: Visual Hop Traceroute Explorer -->
         <div class="diag-tool-card">
           <div class="tool-header">
             <div class="tool-title">
@@ -433,7 +499,7 @@
           </div>
         </div>
 
-        <!-- Tool 3: TCP Port Reachability Tester (Port Open / Firewall Inspector) -->
+        <!-- Tool 4-3: TCP Port Reachability Tester (Port Open / Firewall Inspector) -->
         <div class="diag-tool-card">
           <div class="tool-header">
             <div class="tool-title">
@@ -462,7 +528,7 @@
           </div>
         </div>
 
-        <!-- Tool 4: Continuous Jitter & Packet Loss Monitor -->
+        <!-- Tool 4-4: Continuous Jitter & Packet Loss Monitor -->
         <div class="diag-tool-card">
           <div class="tool-header">
             <div class="tool-title">
@@ -492,25 +558,6 @@
           </div>
           <div class="jitter-canvas-wrapper">
             <canvas id="jitterCanvas" width="400" height="95"></canvas>
-          </div>
-        </div>
-
-        <!-- Tool 5: One-Click Network Emergency Repair (Flush & Purge) -->
-        <div class="diag-tool-card diag-tool-full">
-          <div class="tool-header">
-            <div class="tool-title">
-              <i data-lucide="refresh-cw" class="icon-emerald"></i>
-              <span>ONE-CLICK NETWORK EMERGENCY REPAIR (원클릭 네트워크 응급 복구)</span>
-            </div>
-            <button class="btn-emerald" id="btnFlushNetwork" onclick="executeNetworkFlush()">
-              <i data-lucide="zap"></i> Run Emergency Flush & Repair
-            </button>
-          </div>
-          <div class="flush-repair-desc">
-            <p><i data-lucide="info"></i> PC 네트워크 렉, DNS 캐시 꼬임, 공유기 ARP 테이블 충돌 발생 시 <b>1초 만에 윈도우 네트워크 스택을 깨끗이 초기화</b>하여 통신을 정상 복구합니다.</p>
-          </div>
-          <div class="flush-action-log" id="flushActionLog">
-            <div class="flush-idle-msg">Ready to repair network stack. Click the button above when experiencing connection freezes.</div>
           </div>
         </div>
       </div>
@@ -590,6 +637,18 @@
           <input type="text" id="targetExeInput" readonly class="read-only-input">
         </div>
 
+        <div id="modalAdminRequiredNotice" style="display: none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; color: #F59E0B; font-size: 0.85rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="shield-alert" style="width: 16px; height: 16px;"></i>
+              <span><b>관리자 권한 필요:</b> QoS 대역폭 정책을 적용하려면 관리자 권한이 필요합니다.</span>
+            </div>
+            <button type="button" class="btn-sm-cyan" onclick="requestElevateAdmin()" style="font-size: 0.78rem; padding: 4px 10px;">
+              <i data-lucide="shield-check"></i> 권한 승격 재실행
+            </button>
+          </div>
+        </div>
+
         <div class="alert-info" id="adminNotice">
           <i data-lucide="info"></i>
           <span>Windows QoS rules enforce maximum bandwidth cap per process across system sockets.</span>
@@ -650,136 +709,258 @@
   <!-- Enterprise Troubleshooting Playbook & Manual Modal -->
   <div class="modal-backdrop" id="playbookModal" onclick="onBackdropClick(event, 'playbookModal')">
     <div class="modal-card modal-xl playbook-modal-card">
-      <div class="modal-header">
+      <div class="modal-header" style="align-items: center; justify-content: space-between;">
         <div class="modal-title-group">
           <div class="modal-icon"><i data-lucide="book-open"></i></div>
           <div>
-            <h3>📖 실무 네트워크 장애 진단 매뉴얼 & 활용 팁</h3>
-            <p class="modal-sub">SAP / TMS 해외 연동 장애, 사내 네트워크 렉 원인 규명 및 해결 SOP</p>
+            <h3 id="playbookHeaderTitle">📖 Field Ops Manual & Diagnostic Playbook</h3>
+            <p class="modal-sub" id="playbookHeaderSub">SAP / TMS ERP Integration, Latency Root-Cause Analysis & Troubleshooting SOP</p>
           </div>
         </div>
-        <button class="btn-close" onclick="closePlaybookModal()"><i data-lucide="x"></i></button>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <!-- Language Switcher Tabs -->
+          <div class="category-filters" style="margin: 0; padding: 0;">
+            <button class="filter-chip active" id="btnLangKo" onclick="switchPlaybookLang('ko')" style="padding: 5px 12px; font-size: 0.75rem;">🇰🇷 한국어</button>
+            <button class="filter-chip" id="btnLangEn" onclick="switchPlaybookLang('en')" style="padding: 5px 12px; font-size: 0.75rem;">🇺🇸 English</button>
+          </div>
+          <button class="btn-close" onclick="closePlaybookModal()"><i data-lucide="x"></i></button>
+        </div>
       </div>
 
       <div class="modal-body playbook-body">
-        <!-- NAVIGATION QUICK JUMP PILLS -->
-        <div class="playbook-nav-pills">
-          <a href="#pbSection1" class="pb-pill active"><i data-lucide="layout"></i> PART 1. 탭별 상세 사용법</a>
-          <a href="#pbSection2" class="pb-pill"><i data-lucide="book"></i> PART 2. 네트워크 핵심 용어사전</a>
-          <a href="#pbSection3" class="pb-pill"><i data-lucide="truck"></i> PART 3. SAP/TMS 실무 장애 대응 SOP</a>
-        </div>
+        <!-- KOREAN CONTENT -->
+        <div id="playbookContentKo">
+          <!-- NAVIGATION QUICK JUMP PILLS -->
+          <div class="playbook-nav-pills">
+            <a href="#pbSection1-ko" class="pb-pill active"><i data-lucide="layout"></i> PART 1. 탭별 상세 사용법</a>
+            <a href="#pbSection2-ko" class="pb-pill"><i data-lucide="book"></i> PART 2. 네트워크 핵심 용어사전</a>
+            <a href="#pbSection3-ko" class="pb-pill"><i data-lucide="truck"></i> PART 3. SAP/TMS 실무 장애 대응 SOP</a>
+          </div>
 
-        <!-- PART 1: TAB USAGE GUIDE -->
-        <div class="playbook-section" id="pbSection1">
-          <div class="section-badge"><i data-lucide="layout"></i> PART 1. 각 탭별 기능 및 상세 사용법</div>
-          <div class="playbook-grid-steps">
-            <div class="step-card">
-              <div class="step-num">TAB 1</div>
-              <h4>⚡ Real-time Live Sentinel</h4>
-              <p>• <b>실시간 트래픽 관제:</b> 실행 중인 모든 프로그램의 다운로드/업로드 속도, CPU/RAM 점유율, 소켓 수를 실시간 표시.<br>• <b>QoS 속도 제어:</b> <code>[Limit]</code> 버튼을 눌러 슬라이더 또는 수치 입력(1 KB/s ~ 100 GB/s)으로 특정 앱의 대역폭을 캡(Cap)할 수 있습니다.</p>
+          <!-- PART 1: TAB USAGE GUIDE -->
+          <div class="playbook-section" id="pbSection1-ko">
+            <div class="section-badge"><i data-lucide="layout"></i> PART 1. 각 탭별 기능 및 상세 사용법</div>
+            <div class="playbook-grid-steps">
+              <div class="step-card">
+                <div class="step-num">TAB 1</div>
+                <h4>⚡ Real-time Live Sentinel</h4>
+                <p>• <b>실시간 트래픽 관제:</b> 실행 중인 모든 프로그램의 다운로드/업로드 속도, CPU/RAM 점유율, 소켓 수를 실시간 표시.<br>• <b>QoS 속도 제어:</b> <code>[Limit]</code> 버튼을 눌러 슬라이더 또는 수치 입력(1 KB/s ~ 100 GB/s)으로 특정 앱의 대역폭을 캡(Cap)할 수 있습니다.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">TAB 2</div>
+                <h4>📊 Traffic Analytics & History</h4>
+                <p>• <b>누적 사용량 추적:</b> 오늘, 최근 7일, 30일 동안 어느 프로그램이 데이터를 가장 많이 썼는지 SQLite DB에서 분석.<br>• <b>컬럼 정렬:</b> 컬럼 헤더(날짜, 앱이름, 전송량)를 클릭하여 오름차순/내림차순 정렬 가능.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">TAB 3</div>
+                <h4>🛡️ Active QoS Rules</h4>
+                <p>• <b>윈도우 커널 정책 관리:</b> 현재 윈도우 <code>NetQosPolicy</code>에 등록된 모든 속도 제한 규칙을 카드 형태로 확인.<br>• <b>원클릭 초기화:</b> <code>[Clear All Policies]</code>로 모든 제한을 한 번에 해제 가능.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">TAB 4</div>
+                <h4>🌍 Global Cyber Map</h4>
+                <p>• <b>글로벌 트래픽 레이더:</b> 내 PC(한국)에서 미국(AWS, Google), 유럽, 아시아 등 전 세계 어느 서버로 데이터가 나가는지 네온 아크 라인으로 실시간 시각화.<br>• 우측 목록에서 목적지별 실시간 핑(ms) 확인 가능.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">TAB 5</div>
+                <h4>🛠️ Diagnostic Toolbox</h4>
+                <p>• <b>NSLOOKUP & DNS 벤치마크:</b> KT/SK/LG 및 글로벌 DNS 응답 속도 비교.<br>• <b>Visual Traceroute:</b> 목적지까지의 구간별(Hop) 라우터 경로 및 핑 시각화.<br>• <b>🔌 TCP Port 포트 진단기:</b> SAP(3200), 라벨 프린터(9100), 웹(443) 포트가 방화벽에 막혔는지 즉시 테스트.<br>• <b>📉 실시간 패킷 손실/지터 감시:</b> 1초마다 연속 핑을 쏴서 간헐적 렉 및 패킷 유실률(%) 기록.<br>• <b>🔄 원클릭 네트워크 응급 복구:</b> 1초 만에 DNS 캐시 및 ARP 테이블 초기화.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">HEADER</div>
+                <h4>📥 One-Click Diagnostic Report</h4>
+                <p>• 우측 상단의 <b>[Export Diagnostic Report]</b> 버튼을 누르면 현재 PC 상태, DNS 벤치마크, 활성 소켓, 게이트웨이 헬스를 포함한 <b>단일 HTML 보고서</b>가 자동 다운로드됩니다.</p>
+              </div>
             </div>
-            <div class="step-card">
-              <div class="step-num">TAB 2</div>
-              <h4>📊 Traffic Analytics & History</h4>
-              <p>• <b>누적 사용량 추적:</b> 오늘, 최근 7일, 30일 동안 어느 프로그램이 데이터를 가장 많이 썼는지 SQLite DB에서 분석.<br>• <b>컬럼 정렬:</b> 컬럼 헤더(날짜, 앱이름, 전송량)를 클릭하여 오름차순/내림차순 정렬 가능.</p>
+          </div>
+
+          <!-- PART 2: GLOSSARY OF TERMS -->
+          <div class="playbook-section" id="pbSection2-ko">
+            <div class="section-badge"><i data-lucide="book"></i> PART 2. 네트워크 & 시스템 핵심 용어사전 (알기 쉬운 한글 풀이)</div>
+            <div class="playbook-terms-grid">
+              <div class="term-card">
+                <span class="term-badge">PROTOCOL</span>
+                <h4>TCP vs UDP</h4>
+                <p>• <b>TCP:</b> 데이터 유실 없이 순서대로 주고받는 신뢰성 중심 방식 (SAP, 웹, ERP, 파일전송)<br>• <b>UDP:</b> 속도가 우선인 실시간 스트리밍, DNS 조회 방식</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">ADDRESS</span>
+                <h4>Local vs Remote Endpoint</h4>
+                <p>• <b>Local:</b> 내 PC 내부 IP와 프로그램이 열어둔 포트 번호<br>• <b>Remote:</b> 접속 중인 상대방 서버의 공인 IP와 포트 (예: <code>:443</code> = 보안 웹, <code>:3200</code> = SAP)</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">STATUS</span>
+                <h4>소켓 상태 (ESTABLISHED / SYN_SENT / TIME_WAIT)</h4>
+                <p>• <b>ESTABLISHED:</b> 정상 연결되어 실시간 통신 중<br>• <b>SYN_SENT:</b> 서버에 접속 요청을 보냈으나 답이 없음 (서버 다운, VPN 끊김, 방화벽 차단)<br>• <b>TIME_WAIT:</b> 통신 종료 후 정리 대기 중인 상태</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">QUALITY</span>
+                <h4>Packet Loss & Jitter</h4>
+                <p>• <b>Packet Loss (%):</b> 전송 중 분실된 데이터 비율 (1% 이상이면 송장 출력 지연 발생)<br>• <b>Jitter (ms):</b> 핑 지연시간이 들쭉날쭉 튀는 불안정 정도</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">FIREWALL</span>
+                <h4>TCP Port Reachability (Handshake)</h4>
+                <p>• 일반 핑(ICMP)이 차단된 서버라도 <b>SAP 3200, 3300이나 프린터 9100 포트</b>가 방화벽을 통과해 열려있는지(OPEN) 직접 검사하는 방식.</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">REPAIR</span>
+                <h4>DNS Flush & ARP Cache</h4>
+                <p>• <b>DNS Flush:</b> 잘못 저장된 옛날 서버 IP 정보를 강제로 지우고 새로 받아오는 청소 작업.<br>• <b>ARP Flush:</b> 공유기와 내 PC 사이의 꼬인 하드웨어 주소 테이블을 초기화하는 작업.</p>
+              </div>
             </div>
-            <div class="step-card">
-              <div class="step-num">TAB 3</div>
-              <h4>🛡️ Active QoS Rules</h4>
-              <p>• <b>윈도우 커널 정책 관리:</b> 현재 윈도우 <code>NetQosPolicy</code>에 등록된 모든 속도 제한 규칙을 카드 형태로 확인.<br>• <b>원클릭 초기화:</b> <code>[Clear All Policies]</code>로 모든 제한을 한 번에 해제 가능.</p>
+          </div>
+
+          <!-- PART 3: SAP / TMS ENTERPRISE SOP -->
+          <div class="playbook-section" id="pbSection3-ko">
+            <div class="section-badge"><i data-lucide="truck"></i> PART 3. 실무 SAP / TMS 중국 연동 송장 출력 장애 대응 가이드 (SOP)</div>
+            <div class="arch-info-box">
+              <div class="arch-title"><i data-lucide="info"></i> 사내 송장 출력 아키텍처 이해하기 (3-Tier 연동 구조)</div>
+              <p>우리 회사는 <b>출하 PC (SAP GUI 또는 웹 크롬) $\rightarrow$ SAP ERP $\rightarrow$ 중국 TMS 서버(운송/라벨 생성) $\rightarrow$ 한국 출하장 프린터(spoolsv.exe)</b>를 거쳐 출력됩니다. 따라서 <code>TMS.exe</code>라는 전용 앱이 없더라도 아래 프로세스를 점검하시면 됩니다.</p>
             </div>
-            <div class="step-card">
-              <div class="step-num">TAB 4</div>
-              <h4>🌍 Global Cyber Map</h4>
-              <p>• <b>글로벌 트래픽 레이더:</b> 내 PC(한국)에서 미국(AWS, Google), 유럽, 아시아 등 전 세계 어느 서버로 데이터가 나가는지 네온 아크 라인으로 실시간 시각화.<br>• 우측 목록에서 목적지별 실시간 핑(ms) 확인 가능.</p>
-            </div>
-            <div class="step-card">
-              <div class="step-num">TAB 5</div>
-              <h4>🛠️ Diagnostic Toolbox</h4>
-              <p>• <b>NSLOOKUP & DNS 벤치마크:</b> KT/SK/LG 및 글로벌 DNS 응답 속도 비교.<br>• <b>Visual Traceroute:</b> 목적지까지의 구간별(Hop) 라우터 경로 및 핑 시각화.<br>• <b>🔌 TCP Port 포트 진단기:</b> SAP(3200), 라벨 프린터(9100), 웹(443) 포트가 방화벽에 막혔는지 즉시 테스트.<br>• <b>📉 실시간 패킷 손실/지터 감시:</b> 1초마다 연속 핑을 쏴서 간헐적 렉 및 패킷 유실률(%) 기록.<br>• <b>🔄 원클릭 네트워크 응급 복구:</b> 1초 만에 DNS 캐시 및 ARP 테이블 초기화.</p>
-            </div>
-            <div class="step-card">
-              <div class="step-num">HEADER</div>
-              <h4>📥 One-Click Diagnostic Report</h4>
-              <p>• 우측 상단의 <b>[진단 리포트 저장]</b> 버튼을 누르면 현재 PC 상태, DNS 벤치마크, 활성 소켓, 게이트웨이 헬스를 포함한 <b>단일 HTML 보고서</b>가 자동 다운로드됩니다.</p>
+            <div class="playbook-grid-steps">
+              <div class="step-card">
+                <div class="step-num">STEP 1</div>
+                <h4>로컬 출하 PC 점검 (SAP GUI & 프린터)</h4>
+                <p>• <code>Real-time Live Sentinel</code> 탭에서 <code>saplogon.exe</code>, <code>chrome.exe</code>, <code>spoolsv.exe</code>(프린터 스풀러) 검색<br>• CPU 100% 프리징 또는 대역폭 제한(Limit) 여부 확인</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">STEP 2</div>
+                <h4>중국 TMS 서버 포트 및 소켓 상태 확인</h4>
+                <p>• <code>Diagnostic Toolbox</code> $\rightarrow$ <b>TCP Port Tester</b>에서 중국 서버 IP와 <b>SAP 3200</b> 포트 오픈 여부 검사<br>• SAP GUI 행의 <b>[.. sockets]</b>을 열어 연결 상태가 <code>ESTABLISHED</code>인지 확인</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">STEP 3</div>
+                <h4>서버 재부팅 대신 [✂️ Kill] 세션 리셋</h4>
+                <p>• 중국 서버 전체를 재부팅할 필요 없이, 소켓 창에서 중국 서버와 꼬여있는 연결의 <b>[✂️ Kill]</b> 버튼을 누르면 1초 만에 세션이 초기화(TCP Reset)되어 송장 출력이 재개됩니다.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">STEP 4</div>
+                <h4>Traceroute & 진단 리포트 저장</h4>
+                <p>• <code>Visual Traceroute</code>로 중국 구간 타임아웃 증거 포착<br>• 상단 <b>[Export Diagnostic Report]</b>를 눌러 보고서(HTML)를 다운받아 전산팀/통신사에 장애 증거로 제출</p>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- PART 2: GLOSSARY OF TERMS -->
-        <div class="playbook-section" id="pbSection2">
-          <div class="section-badge"><i data-lucide="book"></i> PART 2. 네트워크 & 시스템 핵심 용어사전 (알기 쉬운 한글 풀이)</div>
-          <div class="playbook-terms-grid">
-            <div class="term-card">
-              <span class="term-badge">PROTOCOL</span>
-              <h4>TCP vs UDP</h4>
-              <p>• <b>TCP:</b> 데이터 유실 없이 순서대로 주고받는 신뢰성 중심 방식 (SAP, 웹, ERP, 파일전송)<br>• <b>UDP:</b> 속도가 우선인 실시간 스트리밍, DNS 조회 방식</p>
-            </div>
-            <div class="term-card">
-              <span class="term-badge">ADDRESS</span>
-              <h4>Local vs Remote Endpoint</h4>
-              <p>• <b>Local:</b> 내 PC 내부 IP와 프로그램이 열어둔 포트 번호<br>• <b>Remote:</b> 접속 중인 상대방 서버의 공인 IP와 포트 (예: <code>:443</code> = 보안 웹, <code>:3200</code> = SAP)</p>
-            </div>
-            <div class="term-card">
-              <span class="term-badge">STATUS</span>
-              <h4>소켓 상태 (ESTABLISHED / SYN_SENT / TIME_WAIT)</h4>
-              <p>• <b>ESTABLISHED:</b> 정상 연결되어 실시간 통신 중<br>• <b>SYN_SENT:</b> 서버에 접속 요청을 보냈으나 답이 없음 (서버 다운, VPN 끊김, 방화벽 차단)<br>• <b>TIME_WAIT:</b> 통신 종료 후 정리 대기 중인 상태</p>
-            </div>
-            <div class="term-card">
-              <span class="term-badge">QUALITY</span>
-              <h4>Packet Loss & Jitter</h4>
-              <p>• <b>Packet Loss (%):</b> 전송 중 분실된 데이터 비율 (1% 이상이면 송장 출력 지연 발생)<br>• <b>Jitter (ms):</b> 핑 지연시간이 들쭉날쭉 튀는 불안정 정도</p>
-            </div>
-            <div class="term-card">
-              <span class="term-badge">FIREWALL</span>
-              <h4>TCP Port Reachability (Handshake)</h4>
-              <p>• 일반 핑(ICMP)이 차단된 서버라도 <b>SAP 3200, 3300이나 프린터 9100 포트</b>가 방화벽을 통과해 열려있는지(OPEN) 직접 검사하는 방식.</p>
-            </div>
-            <div class="term-card">
-              <span class="term-badge">REPAIR</span>
-              <h4>DNS Flush & ARP Cache</h4>
-              <p>• <b>DNS Flush:</b> 잘못 저장된 옛날 서버 IP 정보를 강제로 지우고 새로 받아오는 청소 작업.<br>• <b>ARP Flush:</b> 공유기와 내 PC 사이의 꼬인 하드웨어 주소 테이블을 초기화하는 작업.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- PART 3: SAP / TMS ENTERPRISE SOP -->
-        <div class="playbook-section" id="pbSection3">
-          <div class="section-badge"><i data-lucide="truck"></i> PART 3. 실무 SAP / TMS 중국 연동 송장 출력 장애 대응 가이드 (SOP)</div>
-          
-          <!-- Architecture Note -->
-          <div class="arch-info-box">
-            <div class="arch-title"><i data-lucide="info"></i> 사내 송장 출력 아키텍처 이해하기 (3-Tier 연동 구조)</div>
-            <p>우리 회사는 <b>출하 PC (SAP GUI 또는 웹 크롬) $\rightarrow$ SAP ERP $\rightarrow$ 중국 TMS 서버(운송/라벨 생성) $\rightarrow$ 한국 출하장 프린터(spoolsv.exe)</b>를 거쳐 출력됩니다. 따라서 <code>TMS.exe</code>라는 전용 앱이 없더라도 아래 프로세스를 점검하시면 됩니다.</p>
+        <!-- ENGLISH CONTENT -->
+        <div id="playbookContentEn" style="display: none;">
+          <!-- NAVIGATION QUICK JUMP PILLS -->
+          <div class="playbook-nav-pills">
+            <a href="#pbSection1-en" class="pb-pill active"><i data-lucide="layout"></i> PART 1. Tab Feature Guide</a>
+            <a href="#pbSection2-en" class="pb-pill"><i data-lucide="book"></i> PART 2. Network Glossary</a>
+            <a href="#pbSection3-en" class="pb-pill"><i data-lucide="truck"></i> PART 3. Enterprise SOP (SAP/TMS)</a>
           </div>
 
-          <div class="playbook-grid-steps">
-            <div class="step-card">
-              <div class="step-num">STEP 1</div>
-              <h4>로컬 출하 PC 점검 (SAP GUI & 프린터)</h4>
-              <p>• <code>Real-time Live Sentinel</code> 탭에서 <code>saplogon.exe</code>, <code>chrome.exe</code>, <code>spoolsv.exe</code>(프린터 스풀러) 검색<br>• CPU 100% 프리징 또는 대역폭 제한(Limit) 여부 확인</p>
+          <!-- PART 1: TAB USAGE GUIDE -->
+          <div class="playbook-section" id="pbSection1-en">
+            <div class="section-badge"><i data-lucide="layout"></i> PART 1. Tab Breakdown & Operation Guide</div>
+            <div class="playbook-grid-steps">
+              <div class="step-card">
+                <div class="step-num">TAB 1</div>
+                <h4>⚡ Real-time Live Sentinel</h4>
+                <p>• <b>Live Telemetry:</b> Displays real-time download/upload speed, CPU/RAM utilization, and socket counts for every active process.<br>• <b>Kernel QoS Throttle:</b> Click <code>[Throttle]</code> to cap any application's bandwidth (1 KB/s ~ 100 GB/s) via Windows QoS.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">TAB 2</div>
+                <h4>📊 Traffic Analytics & History</h4>
+                <p>• <b>Long-term Traffic Audit:</b> Queries SQLite history to reveal top consumers for Today, Last 10m, 1h, 24h, and Daily Summaries.<br>• <b>Bidirectional Sorting:</b> Click column headers to sort by Date, Process Name, Upload, or Download.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">TAB 3</div>
+                <h4>🛡️ Active QoS Rules</h4>
+                <p>• <b>Kernel Policy Management:</b> View and adjust active Windows <code>NetQosPolicy</code> bandwidth rules.<br>• <b>One-Click Cleanup:</b> <code>[Clear All Policies]</code> instantly removes all active bandwidth restrictions.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">TAB 4</div>
+                <h4>🌍 Global Cyber Map</h4>
+                <p>• <b>Outbound Telemetry Radar:</b> Visualizes live connections from local origins to global endpoints (AWS, Google, CDN) with neon arc animations.<br>• Inspect real-time TCP RTT latency (ms) for every foreign destination.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">TAB 5</div>
+                <h4>🛠️ Diagnostic Toolbox</h4>
+                <p>• <b>DNS Benchmark:</b> Compare DNS response times across ISP (KT/SK/LG) and Public resolvers.<br>• <b>Visual Traceroute:</b> Pinpoint intermediate router hops and packet delays.<br>• <b>🔌 TCP Port Tester:</b> Validate firewall connectivity for SAP (3200), Label Printers (9100), and HTTPS (443).<br>• <b>📉 Packet Loss & Jitter Monitor:</b> Continuous 1-second ping monitor to detect intermittent micro-drops.<br>• <b>🔄 Emergency Recovery:</b> One-click DNS Flush & ARP Table cache reset.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">HEADER</div>
+                <h4>📥 One-Click Diagnostic Report</h4>
+                <p>• Click <b>[Export Diagnostic Report]</b> in the top header to generate and download a self-contained HTML audit report.</p>
+              </div>
             </div>
-            <div class="step-card">
-              <div class="step-num">STEP 2</div>
-              <h4>중국 TMS 서버 포트 및 소켓 상태 확인</h4>
-              <p>• <code>Diagnostic Toolbox</code> $\rightarrow$ <b>TCP Port Tester</b>에서 중국 서버 IP와 <b>SAP 3200</b> 포트 오픈 여부 검사<br>• SAP GUI 행의 <b>[.. sockets]</b>을 열어 연결 상태가 <code>ESTABLISHED</code>인지 확인</p>
+          </div>
+
+          <!-- PART 2: GLOSSARY OF TERMS -->
+          <div class="playbook-section" id="pbSection2-en">
+            <div class="section-badge"><i data-lucide="book"></i> PART 2. Network & Systems Core Glossary</div>
+            <div class="playbook-terms-grid">
+              <div class="term-card">
+                <span class="term-badge">PROTOCOL</span>
+                <h4>TCP vs UDP</h4>
+                <p>• <b>TCP:</b> Connection-oriented reliable protocol guaranteeing ordered delivery (SAP, ERP, HTTP, File Transfer).<br>• <b>UDP:</b> Low-overhead connectionless protocol for real-time streaming and DNS queries.</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">ADDRESS</span>
+                <h4>Local vs Remote Endpoint</h4>
+                <p>• <b>Local:</b> Local IP and port bound by the process on this machine.<br>• <b>Remote:</b> Public/Private IP and port of the target server (e.g., <code>:443</code> = HTTPS, <code>:3200</code> = SAP Gateway).</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">STATUS</span>
+                <h4>Socket States (ESTABLISHED / SYN_SENT / TIME_WAIT)</h4>
+                <p>• <b>ESTABLISHED:</b> Active bidirectional TCP connection.<br>• <b>SYN_SENT:</b> Connection request dispatched; awaiting ACK (Indicates server down, firewall drop, or VPN failure).<br>• <b>TIME_WAIT:</b> Connection closed; socket awaiting cleanup timer.</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">QUALITY</span>
+                <h4>Packet Loss & Jitter</h4>
+                <p>• <b>Packet Loss (%):</b> Percentage of packets dropped in transit (>1% triggers label printing timeouts).<br>• <b>Jitter (ms):</b> Statistical variance in round-trip latency; key indicator of network congestion.</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">FIREWALL</span>
+                <h4>TCP Port Reachability (Handshake)</h4>
+                <p>• Tests full 3-way TCP handshake to ports like <b>SAP 3200 or Zebra Printer 9100</b>, bypassing ICMP ping blocks.</p>
+              </div>
+              <div class="term-card">
+                <span class="term-badge">REPAIR</span>
+                <h4>DNS Flush & ARP Cache</h4>
+                <p>• <b>DNS Flush:</b> Purges stale DNS client cache and forces clean lookup.<br>• <b>ARP Flush:</b> Clears corrupted MAC-to-IP hardware bindings with default gateways.</p>
+              </div>
             </div>
-            <div class="step-card">
-              <div class="step-num">STEP 3</div>
-              <h4>서버 재부팅 대신 [✂️ Kill] 세션 리셋</h4>
-              <p>• 중국 서버 전체를 재부팅할 필요 없이, 소켓 창에서 중국 서버와 꼬여있는 연결의 <b>[✂️ Kill]</b> 버튼을 누르면 1초 만에 세션이 초기화(TCP Reset)되어 송장 출력이 재개됩니다.</p>
+          </div>
+
+          <!-- PART 3: SAP / TMS ENTERPRISE SOP -->
+          <div class="playbook-section" id="pbSection3-en">
+            <div class="section-badge"><i data-lucide="truck"></i> PART 3. Enterprise SAP / TMS Cross-Border Outage SOP</div>
+            <div class="arch-info-box">
+              <div class="arch-title"><i data-lucide="info"></i> Shipping Label Architecture (3-Tier Infrastructure)</div>
+              <p>Shipping workflows operate through: <b>Workstation Client (SAP GUI / Web) $\rightarrow$ SAP ERP Core $\rightarrow$ Cross-Border TMS Server $\rightarrow$ On-Premise Barcode Spooler (spoolsv.exe)</b>. Follow the SOP steps below during print stalls.</p>
             </div>
-            <div class="step-card">
-              <div class="step-num">STEP 4</div>
-              <h4>Traceroute & 진단 리포트 저장</h4>
-              <p>• <code>Visual Traceroute</code>로 중국 구간 타임아웃 증거 포착<br>• 상단 <b>[진단 리포트 저장]</b>을 눌러 보고서(HTML)를 다운받아 전산팀/통신사에 장애 증거로 제출</p>
+            <div class="playbook-grid-steps">
+              <div class="step-card">
+                <div class="step-num">STEP 1</div>
+                <h4>Inspect Local Workstation (SAP & Spooler)</h4>
+                <p>• In <code>Real-time Live Sentinel</code>, filter for <code>saplogon.exe</code>, <code>chrome.exe</code>, and <code>spoolsv.exe</code>.<br>• Verify CPU is not pinned at 100% and check if bandwidth throttling is active.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">STEP 2</div>
+                <h4>Verify TMS Port & Active Socket Health</h4>
+                <p>• Open <code>Diagnostic Toolbox</code> $\rightarrow$ <b>TCP Port Tester</b> and test target TMS host on port <b>3200</b>.<br>• In Live Sentinel, inspect the SAP GUI sockets button to confirm state is <code>ESTABLISHED</code>.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">STEP 3</div>
+                <h4>Reset Frozen Sessions via [✂️ Kill Socket]</h4>
+                <p>• Rather than rebooting servers, click <b>[✂️ Kill]</b> on the hung TCP socket to send an immediate TCP RST. SAP/TMS will cleanly reconnect in under 1 second.</p>
+              </div>
+              <div class="step-card">
+                <div class="step-num">STEP 4</div>
+                <h4>Generate Diagnostic Proof Report</h4>
+                <p>• Run <code>Visual Traceroute</code> to capture cross-border packet drop evidence.<br>• Click <b>[Export Diagnostic Report]</b> to download an HTML summary for IT Infrastructure & ISP escalation.</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button class="btn-primary" onclick="closePlaybookModal()"><i data-lucide="check"></i> 확인 완료</button>
+        <button class="btn-primary" id="playbookCloseBtn" onclick="closePlaybookModal()"><i data-lucide="check"></i> <span>Close Manual</span></button>
       </div>
     </div>
   </div>

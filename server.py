@@ -270,6 +270,37 @@ def system_info():
         "os": "Windows"
     }
 
+@app.post("/api/system/elevate")
+def request_elevation():
+    """Triggers Windows UAC prompt to relaunch controller with Admin privileges."""
+    if is_admin():
+        return {"status": "ok", "message": "Already running with Administrator privileges"}
+    try:
+        if getattr(sys, 'frozen', False):
+            executable = sys.executable
+            params = "--elevated"
+            work_dir = os.path.dirname(os.path.abspath(executable))
+        else:
+            executable = sys.executable
+            desktop_main = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main_desktop.py")
+            params = f'"{desktop_main}" --elevated'
+            work_dir = os.path.dirname(os.path.abspath(__file__))
+
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, work_dir, 1)
+        if ret > 32:
+            # Terminate current non-admin instance quickly so the new elevated instance gets port 8000 and single-window ownership
+            def delayed_exit():
+                time.sleep(0.4)
+                os._exit(0)
+            
+            import threading
+            threading.Thread(target=delayed_exit, daemon=True).start()
+            return {"status": "ok", "message": "Administrator elevation granted. Relaunching..."}
+        else:
+            return {"status": "error", "message": "UAC privilege elevation was cancelled by user"}
+    except Exception as e:
+        return {"status": "error", "message": f"Elevation error: {str(e)}"}
+
 class AutostartRequest(BaseModel):
     enable: bool
 
@@ -284,8 +315,34 @@ def get_autostart():
 
 # Analytics & History Endpoints
 @app.get("/api/history/top")
-def get_top_consumers(hours: int = Query(24, ge=1, le=720), limit: int = Query(10, ge=1, le=100)):
-    items = history_db.get_top_consumers(period_hours=hours, limit=limit)
+def get_top_consumers(
+    period: str = Query("today", description="Time window: today, 10m, 1h, 3h, 6h, 12h, 18h, 24h"),
+    hours: Optional[float] = Query(None),
+    limit: int = Query(500, ge=1, le=1000)
+):
+    today_only = False
+    p_hours = 24.0
+
+    if period == "today":
+        today_only = True
+    elif period == "10m":
+        p_hours = 10.0 / 60.0
+    elif period == "1h":
+        p_hours = 1.0
+    elif period == "3h":
+        p_hours = 3.0
+    elif period == "6h":
+        p_hours = 6.0
+    elif period == "12h":
+        p_hours = 12.0
+    elif period == "18h":
+        p_hours = 18.0
+    elif period == "24h":
+        p_hours = 24.0
+    elif hours is not None:
+        p_hours = float(hours)
+
+    items = history_db.get_top_consumers(period_hours=p_hours, limit=limit, today_only=today_only)
     for item in items:
         item["total_traffic_formatted"] = format_total_bytes(item["total_traffic_bytes"])
         item["total_up_formatted"] = format_total_bytes(item["total_up_bytes"])
@@ -318,6 +375,7 @@ class KillSocketRequest(BaseModel):
 
 class NslookupRequest(BaseModel):
     domain: str
+    custom_dns: Optional[str] = None
 
 class TracerouteRequest(BaseModel):
     target: str
@@ -387,7 +445,7 @@ def kill_socket_endpoint(req: KillSocketRequest):
 
 @app.post("/api/diagnostics/nslookup")
 def nslookup_endpoint(req: NslookupRequest):
-    return diagnostics.run_nslookup(req.domain)
+    return diagnostics.run_nslookup(req.domain, req.custom_dns)
 
 @app.post("/api/diagnostics/traceroute")
 def traceroute_endpoint(req: TracerouteRequest):
@@ -418,6 +476,11 @@ def port_test_endpoint(req: PortTestRequest):
 def ping_sample_endpoint(req: PingSampleRequest):
     """Fast single-probe latency measurement for continuous jitter monitoring"""
     return diagnostics.ping_target_latency(req.host)
+
+@app.get("/api/diagnostics/ipconfig")
+def ipconfig_endpoint():
+    """Executes ipconfig /all and returns raw output and parsed network adapter telemetry"""
+    return diagnostics.get_ipconfig_all()
 
 class ExportReportRequest(BaseModel):
     html_content: str

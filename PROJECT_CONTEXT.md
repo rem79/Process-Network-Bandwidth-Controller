@@ -1,4 +1,4 @@
-﻿# 🛡️ Process Network Bandwidth Controller (Network Sentinel)
+# 🛡️ Process Network Bandwidth Controller (Network Sentinel)
 ## 📌 AI Master Project Context & Knowledge Base
 
 > **문서 목적:**  
@@ -96,7 +96,39 @@ python -m unittest discover -s tests -v
 # 2. 로컬 개발 데스크톱 앱 실행
 python main_desktop.py
 
-# 3. 최신 단독 실행파일(EXE) 컴파일
+# 3. 다른 PC 이동/배포용 단일 실행파일(OneFile EXE) 컴파일
 python build_exe.py
-# 결과물: dist/NetworkSentinelApp/NetworkSentinelApp.exe
+# 결과물: dist/NetworkSentinelApp.exe (단 1개의 파일로 타 PC에서 즉시 구동)
 ```
+
+---
+
+## 6. 🔄 Multi-PC 작업 세션 동기화 & 연속성 로그 (Continuity Log)
+
+> **PC 전환 시 AI 필독 가이드:**  
+> 다른 PC(집/회사/노트북)에서 `git pull` 후 본 섹션을 확인하여 이전 작업 맥락과 결정 사항을 즉시 이어받습니다.
+
+### 📅 최근 세션 히스토리 & 결정 사항
+* **2026-08-31 (v3.1.0 사내 전용 DNS 벤치마크 지원 & 타 PC 배포용 단일 포터블 EXE 완비):**
+  * **사내 커스텀 DNS & 로컬 DNS 자동 연동:** `NSLOOKUP & DNS BENCHMARK`에 사내 프라이빗 DNS IP(예: `10.x.x.x`, `192.168.x.x`) 직접 입력 슬롯 추가 및 현재 PC 어댑터에 할당된 사내 DNS 자동 감지 기능을 추가하여, 통신사/글로벌 DNS와 사내 DNS의 응답 속도 및 사내 도메인 해석 결과를 동시 벤치마킹하도록 개선.
+  * **단 1개의 포터블 단일 파일(`dist/NetworkSentinelApp.exe`) 빌드:** 폴더 형태가 아닌 단 1개의 `.exe` 파일로 압축 패키징하여 USB 복사나 네트워크 전송으로 다른 PC에서 추가 설치/폴더 없이 즉시 실행 가능하도록 개편.
+  * **Leaflet.js 기반 고해상도 인터랙티브 실사 세계지도:** CartoDB Dark Matter 고해상도 타일 레이어 + 실시간 아크 빔 + 마우스 줌/패닝 지원.
+  * **진단 도구함 상하 순서 최적화 & IPConfig 인스펙터 완비:** 로컬 상태 $\rightarrow$ IPConfig 인스펙터 $\rightarrow$ 원클릭 응급 복구 $\rightarrow$ 4대 정밀 진단 툴 순서 완비.
+  * 전체 단위 테스트 22개 통과 확인 및 단일 실행 파일(`dist/NetworkSentinelApp.exe`) 컴파일 완료.
+
+### 🎯 현재 상태 및 다음 진행 과제 (Next Actions)
+1. **현재 상태:** 사내 커스텀 DNS 벤치마크, 타 PC 즉시 실행 가능한 단일 포터블 EXE(`dist/NetworkSentinelApp.exe`), Leaflet 인터랙티브 실사 세계지도, 진단 툴박스 최적 배치, IPConfig 실시간 진단, 100% 화면 가변 폭, 한/영 듀얼 매뉴얼, 금일 전체 트래픽 리스트, 시간 필터 칩, 중복 실행 방지, CPU/RAM 분리, 무권한 일반 실행 및 UAC 원클릭 전환이 모두 완비된 배포 준비 완료.
+2. **Next Action:** 사용자 타 PC 테스트 및 실무 배포.
+
+
+
+
+
+
+
+
+
+
+
+
+

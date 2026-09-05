@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('C:\\Users\\ilios\\AppData\\Roaming\\Python\\Python312\\site-packages\\webview', 'webview'), ('C:\\Users\\ilios\\AppData\\Roaming\\Python\\Python312\\site-packages\\clr_loader', 'clr_loader'), ('static', 'static'), ('qos_rules.json', '.')]
+datas = [('C:\\Users\\5049\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\webview', 'webview'), ('C:\\Users\\5049\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\clr_loader', 'clr_loader'), ('static', 'static'), ('qos_rules.json', '.')]
 binaries = []
 hiddenimports = ['pystray', 'PIL', 'history_db', 'sqlite3', 'network_inspector', 'diagnostics']
 tmp_ret = collect_all('webview')
@@ -28,27 +28,20 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
     name='NetworkSentinelApp',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    uac_admin=True,
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='NetworkSentinelApp',
 )

@@ -24,24 +24,73 @@ DNS_PROVIDERS = [
     {"name": "Quad9 Secure DNS", "ip": "9.9.9.9", "flag": "🛡️", "type": "Security Filtered"},
 ]
 
-def run_nslookup(domain: str) -> dict:
+def get_system_active_dns_list() -> list:
+    """Extracts currently configured active DNS servers from local NIC adapters"""
+    dns_list = []
+    try:
+        cfg = get_ipconfig_all()
+        for adapter in cfg.get("adapters", []):
+            for dns in adapter.get("dns_servers", []):
+                clean_dns = dns.strip()
+                if clean_dns and clean_dns not in dns_list and clean_dns != "N/A":
+                    dns_list.append(clean_dns)
+    except Exception as e:
+        logger.warning(f"Failed to extract active system DNS list: {e}")
+    return dns_list
+
+def run_nslookup(domain: str, custom_dns: str = None) -> dict:
     """
-    Performs comprehensive DNS record resolution and benchmarks lookup speeds across top DNS providers.
+    Performs comprehensive DNS record resolution and benchmarks lookup speeds across 
+    corporate/system DNS and top public DNS providers.
     """
     clean_domain = domain.strip().replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
     if not clean_domain:
         return {"domain": domain, "records": [], "benchmarks": [], "error": "Invalid domain name"}
 
-    # 1. System Default Resolution (A / AAAA records)
+    # 1. Build providers list including System DNS & Custom Corporate DNS
+    providers_to_test = []
+    seen_ips = set()
+
+    # Custom Corporate DNS if provided by user
+    if custom_dns:
+        c_dns = custom_dns.strip()
+        if c_dns:
+            providers_to_test.append({
+                "name": f"🏢 사내 커스텀 DNS ({c_dns})",
+                "ip": c_dns,
+                "flag": "🏢",
+                "type": "Corporate Custom"
+            })
+            seen_ips.add(c_dns)
+
+    # Auto-detected System Configured Local/Corporate DNS
+    sys_dns_list = get_system_active_dns_list()
+    for s_dns in sys_dns_list:
+        if s_dns not in seen_ips:
+            providers_to_test.append({
+                "name": f"🏢 현재 PC 설정 DNS ({s_dns})",
+                "ip": s_dns,
+                "flag": "💻",
+                "type": "System Active"
+            })
+            seen_ips.add(s_dns)
+
+    # Standard public ISP / Global DNS
+    for p in DNS_PROVIDERS:
+        if p["ip"] not in seen_ips:
+            providers_to_test.append(p)
+            seen_ips.add(p["ip"])
+
+    # 2. System Default Resolution (A / AAAA records)
     records = []
     try:
         addr_info = socket.getaddrinfo(clean_domain, None)
-        seen_ips = set()
+        seen_resolved = set()
         for family, _, _, _, sockaddr in addr_info:
             ip = sockaddr[0]
-            if ip in seen_ips:
+            if ip in seen_resolved:
                 continue
-            seen_ips.add(ip)
+            seen_resolved.add(ip)
             geo = resolve_geoip_sync(ip)
             rdns = resolve_rdns_sync(ip)
             records.append({
@@ -55,15 +104,15 @@ def run_nslookup(domain: str) -> dict:
     except Exception as e:
         logger.warning(f"Default DNS lookup failed for {clean_domain}: {e}")
 
-    # 2. Benchmark top DNS servers using nslookup
+    # 3. Benchmark providers using nslookup
     benchmarks = []
-    for provider in DNS_PROVIDERS:
+    for provider in providers_to_test:
         t0 = time.perf_counter()
         res_ips = []
         status = "OK"
         try:
             cmd = ["nslookup", clean_domain, provider["ip"]]
-            proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=1.8)
+            proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=2.0)
             duration_ms = round((time.perf_counter() - t0) * 1000, 1)
             
             # Parse resolved addresses
@@ -88,14 +137,15 @@ def run_nslookup(domain: str) -> dict:
             "resolved_ip": res_ips[0] if res_ips else "N/A"
         })
 
-    # Sort benchmark by fastest latency
-    benchmarks.sort(key=lambda b: b["latency_ms"])
+    # Sort benchmark by fastest latency (responsive ones first)
+    benchmarks.sort(key=lambda b: (0 if b["status"] == "OK" else 1, b["latency_ms"]))
 
     return {
         "domain": clean_domain,
+        "custom_dns_tested": custom_dns,
         "records": records,
         "benchmarks": benchmarks,
-        "fastest_dns": benchmarks[0]["provider"] if benchmarks else "System Default"
+        "fastest_dns": benchmarks[0]["provider"] if benchmarks and benchmarks[0]["status"] == "OK" else "System Default"
     }
 
 def run_visual_traceroute(target_host: str, max_hops: int = 12) -> dict:
@@ -353,5 +403,84 @@ def ping_target_latency(host: str, timeout: float = 1.0) -> dict:
         return {"status": "ok", "host": clean_host, "latency_ms": elapsed_ms}
     else:
         return {"status": "loss", "host": clean_host, "latency_ms": None}
+
+def get_ipconfig_all() -> dict:
+    """
+    Executes 'ipconfig /all' on the Windows host, returns the complete raw terminal output
+    along with parsed summary of all active network adapters, IP/MAC addresses, and DNS servers.
+    """
+    try:
+        proc = subprocess.run(["ipconfig", "/all"], capture_output=True, text=True, errors="replace", shell=True)
+        raw_output = proc.stdout.strip()
+
+        # Parse adapters
+        adapters = []
+        current_adapter = None
+
+        for line in raw_output.splitlines():
+            line_str = line.strip()
+            # New adapter header check (e.g. '이더넷 어댑터 이더넷:' or 'Wireless LAN adapter Wi-Fi:')
+            if (line.startswith("이더넷 어댑터") or line.startswith("무선 LAN 어댑터") or 
+                line.startswith("Ethernet adapter") or line.startswith("Wireless LAN adapter")):
+                if current_adapter:
+                    adapters.append(current_adapter)
+                adapter_name = line.split(":", 1)[0].replace("어댑터", "").replace("adapter", "").strip()
+                current_adapter = {
+                    "name": adapter_name,
+                    "description": "",
+                    "mac": "",
+                    "dhcp": "No",
+                    "ipv4": "",
+                    "subnet": "",
+                    "gateway": "",
+                    "dns_servers": []
+                }
+            elif current_adapter:
+                if "설명" in line or "Description" in line:
+                    current_adapter["description"] = line.split(":", 1)[-1].strip()
+                elif "물리적 주소" in line or "Physical Address" in line:
+                    current_adapter["mac"] = line.split(":", 1)[-1].strip()
+                elif "DHCP 사용" in line or "DHCP Enabled" in line:
+                    current_adapter["dhcp"] = "Yes" if ("예" in line or "Yes" in line) else "No"
+                elif "IPv4 주소" in line or "IPv4 Address" in line:
+                    # e.g. '192.168.0.15(기본 설정)'
+                    ip_val = line.split(":", 1)[-1].strip()
+                    current_adapter["ipv4"] = re.sub(r"\(.*?\)", "", ip_val).strip()
+                elif "서브넷 마스크" in line or "Subnet Mask" in line:
+                    current_adapter["subnet"] = line.split(":", 1)[-1].strip()
+                elif "기본 게이트웨이" in line or "Default Gateway" in line:
+                    gw_val = line.split(":", 1)[-1].strip()
+                    if gw_val:
+                        current_adapter["gateway"] = gw_val
+                elif "DNS 서버" in line or "DNS Servers" in line:
+                    dns_val = line.split(":", 1)[-1].strip()
+                    if dns_val:
+                        current_adapter["dns_servers"].append(dns_val)
+                elif line_str and current_adapter["dns_servers"] and re.match(r"^[0-9a-fA-F\.\:]+$", line_str):
+                    # Additional DNS server lines
+                    current_adapter["dns_servers"].append(line_str)
+
+        if current_adapter:
+            adapters.append(current_adapter)
+
+        # Filter out disconnected or empty adapters
+        active_adapters = [a for a in adapters if a.get("ipv4") or a.get("mac")]
+        if not active_adapters and adapters:
+            active_adapters = adapters
+
+        return {
+            "status": "ok",
+            "raw_output": raw_output,
+            "adapters": active_adapters,
+            "total_adapters": len(active_adapters)
+        }
+    except Exception as e:
+        logger.error(f"Failed to execute ipconfig /all: {e}")
+        return {
+            "status": "error",
+            "raw_output": f"Error executing ipconfig /all: {str(e)}",
+            "adapters": [],
+            "total_adapters": 0
+        }
 
 

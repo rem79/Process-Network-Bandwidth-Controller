@@ -25,37 +25,79 @@ logging.info("Desktop Sentinel App Starting...")
 # Global Window Handle
 app_window = None
 tray_icon = None
+single_instance_mutex = None
 
-
-def is_admin():
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin() != 0
-    except Exception:
-        return False
-
-def elevate_admin():
+def acquire_single_instance_mutex(is_elevating=False):
     """
-    Relaunches the current script/exe with Administrator privileges via Windows UAC prompt.
+    Creates a named Windows Global Mutex to strictly prevent duplicate launches across all privilege levels.
+    If is_elevating=True, terminates any existing instances and waits to acquire the mutex.
+    If another instance (either Admin or User) is already active, restores and focuses the existing window, then returns None.
     """
-    if not is_admin():
-        print("Requesting Administrator privileges (UAC)...")
+    MUTEX_NAME = "Global\\AntigravityNetworkSentinel_SingleInstance_Mutex"
+    ERROR_ALREADY_EXISTS = 183
+    ERROR_ACCESS_DENIED = 5
+
+    if is_elevating:
+        kill_previous_instances()
+        # Retry for up to 3 seconds for old instance to fully exit and release mutex/port
+        for _ in range(15):
+            handle = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
+            last_error = ctypes.windll.kernel32.GetLastError()
+            if last_error not in (ERROR_ALREADY_EXISTS, ERROR_ACCESS_DENIED):
+                return handle
+            time.sleep(0.2)
+        # Force return handle since we are elevated
+        return ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
+
+    handle = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
+    last_error = ctypes.windll.kernel32.GetLastError()
+
+    # If mutex exists or access denied (meaning higher privilege Admin instance is already holding it)
+    if last_error in (ERROR_ALREADY_EXISTS, ERROR_ACCESS_DENIED):
         try:
-            if getattr(sys, 'frozen', False):
-                executable = sys.executable
-                params = ""
-            else:
-                executable = sys.executable
-                params = f'"{os.path.abspath(__file__)}"'
-
-            ret = ctypes.windll.shell32.ShellExecuteW(
-                None, "runas", executable, params, None, 1
-            )
-            if ret > 32:
-                sys.exit(0)
-            else:
-                print(f"UAC elevation refused or failed with code {ret}")
+            # Find existing window by title and bring to front
+            hwnd = ctypes.windll.user32.FindWindowW(None, "Process Network Bandwidth Controller")
+            if hwnd:
+                SW_RESTORE = 9
+                ctypes.windll.user32.ShowWindow(hwnd, SW_RESTORE)
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
         except Exception as e:
-            print(f"Failed to elevate privileges: {e}")
+            logging.error(f"Error focusing existing window: {e}")
+        return None
+    return handle
+
+
+def kill_previous_instances():
+    """
+    Ensures single instance execution by terminating older instances of the app
+    when elevating or relaunching.
+    """
+    import psutil
+    current_pid = os.getpid()
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if proc.info['pid'] == current_pid:
+                continue
+            p_name = (proc.info['name'] or '').lower()
+            p_cmd = ' '.join(proc.info['cmdline'] or []).lower()
+
+            is_target = False
+            if getattr(sys, 'frozen', False):
+                if 'networksentinelapp' in p_name:
+                    is_target = True
+            else:
+                if 'python' in p_name and 'main_desktop.py' in p_cmd:
+                    is_target = True
+
+            if is_target:
+                logging.info(f"Terminating previous instance PID {proc.info['pid']}...")
+                proc.terminate()
+                try:
+                    proc.wait(timeout=1.5)
+                except psutil.TimeoutExpired:
+                    proc.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, Exception):
+            pass
 
 def run_server():
     try:
@@ -134,10 +176,23 @@ def setup_tray():
         logging.error(f"Error starting tray icon: {e}", exc_info=True)
 
 def main():
-    global app_window
+    global app_window, single_instance_mutex
 
-    # 1. Force Administrator privileges
-    elevate_admin()
+    is_elevated_arg = "--elevated" in sys.argv
+    admin_active = False
+    try:
+        admin_active = ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except Exception:
+        pass
+
+    # 1. Single Instance Check: if elevating or already admin, take over from previous instance
+    is_elevating = is_elevated_arg or admin_active
+    single_instance_mutex = acquire_single_instance_mutex(is_elevating=is_elevating)
+    if not single_instance_mutex:
+        logging.info("Another instance is already running. Focused existing window and exiting.")
+        sys.exit(0)
+
+    logging.info(f"App running mode: {'ADMIN' if admin_active else 'USER (Non-Admin)'}")
 
     logging.info("Starting background FastAPI server thread...")
     server_thread = threading.Thread(target=run_server, daemon=True)

@@ -6,7 +6,7 @@ import clr_loader
 
 def build():
     print("==================================================")
-    print("Building Standalone Process Network Bandwidth Controller.exe (v3.0 Suite)")
+    print("Building Single Standalone Executable (NetworkSentinelApp.exe - OneFile Mode)")
     print("==================================================")
 
     webview_dir = os.path.dirname(webview.__file__)
@@ -15,9 +15,8 @@ def build():
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
-        "--onedir",
+        "--onefile",
         "--windowed",
-        "--uac-admin",  # Forces Windows Administrator privilege prompt
         "--hidden-import", "pystray",
         "--hidden-import", "PIL",
         "--hidden-import", "history_db",
@@ -37,11 +36,13 @@ def build():
     print("Running command:", " ".join(cmd))
     res = subprocess.run(cmd, cwd=os.path.dirname(__file__))
     if res.returncode == 0:
-        exe_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "dist", "NetworkSentinelApp", "NetworkSentinelApp.exe"))
-        print("\n[SUCCESS] Compiled standalone executable successfully!")
-        print(f"EXE Location: {exe_path}")
+        exe_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "dist", "NetworkSentinelApp.exe"))
+        print("\n[SUCCESS] Compiled single standalone executable successfully!")
+        print(f"Single EXE Location: {exe_path}")
+        print("You can copy this single .exe file to any Windows computer and run it directly!")
     else:
         print("\n[ERROR] Build failed.")
 
 if __name__ == "__main__":
     build()
+

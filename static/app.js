@@ -64,19 +64,27 @@ function switchTab(tabId) {
     const btn = document.getElementById('tabMapBtn'); if (btn) btn.classList.add('active');
     const view = document.getElementById('viewMap'); if (view) view.classList.add('active');
     loadGlobalMapData();
+    setTimeout(() => {
+      if (leafletMap) leafletMap.invalidateSize();
+    }, 150);
   } else if (tabId === 'diagnostics') {
     const btn = document.getElementById('tabDiagBtn'); if (btn) btn.classList.add('active');
     const view = document.getElementById('viewDiagnostics'); if (view) view.classList.add('active');
     loadDiagnosticsHealth();
+    loadIpconfigData();
   }
 
   if (window.lucide) lucide.createIcons();
 }
 
+let isSystemAdmin = false;
+
 function fetchSystemInfo() {
   fetch('/api/system-info')
     .then(res => res.json())
     .then(data => {
+      isSystemAdmin = !!data.is_admin;
+      window.isSystemAdmin = isSystemAdmin;
       updateAdminBadge(data.is_admin);
       updateAutostartBadge(data.autostart);
     })
@@ -85,14 +93,62 @@ function fetchSystemInfo() {
 
 function updateAdminBadge(isAdmin) {
   const badge = document.getElementById('adminStatus');
+  const policiesWarning = document.getElementById('policiesAdminWarning');
+  const policiesBadge = document.getElementById('policiesAdminBadge');
+  const modalNotice = document.getElementById('modalAdminRequiredNotice');
+
   if (isAdmin) {
-    badge.className = 'status-badge admin-ok';
-    badge.innerHTML = `<i data-lucide="shield-check"></i><span>ADMIN PRIVILEGES ACTIVE</span>`;
+    if (badge) {
+      badge.className = 'status-badge admin-ok';
+      badge.title = 'Administrator privileges active. All QoS features enabled.';
+      badge.innerHTML = `<i data-lucide="shield-check"></i><span>ADMIN PRIVILEGES ACTIVE</span>`;
+    }
+    if (policiesWarning) policiesWarning.style.display = 'none';
+    if (policiesBadge) {
+      policiesBadge.innerHTML = `<i data-lucide="shield-check"></i><span>ADMIN ACTIVE</span>`;
+      policiesBadge.className = 'status-badge-sm status-established';
+    }
+    if (modalNotice) modalNotice.style.display = 'none';
   } else {
-    badge.className = 'status-badge admin-warn';
-    badge.innerHTML = `<i data-lucide="shield-alert"></i><span>USER MODE (Admin Required for QoS)</span>`;
+    if (badge) {
+      badge.className = 'status-badge admin-warn';
+      badge.title = 'Running in User Mode. Click to elevate to Administrator for QoS control.';
+      badge.innerHTML = `<i data-lucide="shield-alert"></i><span>USER MODE (Click to Elevate)</span>`;
+    }
+    if (policiesWarning) policiesWarning.style.display = 'flex';
+    if (policiesBadge) {
+      policiesBadge.innerHTML = `<i data-lucide="shield-alert"></i><span>ADMIN REQUIRED</span>`;
+      policiesBadge.className = 'status-badge-sm status-admin-tag';
+    }
+    if (modalNotice) modalNotice.style.display = 'block';
   }
   if (window.lucide) lucide.createIcons();
+}
+
+function onAdminBadgeClick() {
+  if (isSystemAdmin) {
+    showToast("관리자 권한이 이미 활성화되어 있어 모든 QoS 제어가 가능합니다.", "info");
+    return;
+  }
+  requestElevateAdmin();
+}
+
+function requestElevateAdmin() {
+  if (confirm("Windows QoS 대역폭 정책을 제어하려면 관리자 권한이 필요합니다.\n\n관리자 계정(UAC)으로 프로그램을 다시 실행하시겠습니까?\n(기존 일반 창은 자동으로 종료됩니다)")) {
+    showToast("관리자 자격 증명(UAC) 창이 열립니다...", "warning");
+    fetch('/api/system/elevate', { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'ok') {
+          showToast("관리자 권한 앱으로 전환 중입니다. 기존 창이 종료됩니다...", "success");
+        } else {
+          showToast(data.message || "관리자 권한 승격이 취소되었습니다.", "warning");
+        }
+      })
+      .catch(err => {
+        showToast("권한 승격 요청 실패: " + err.message, "danger");
+      });
+  }
 }
 
 function updateAutostartBadge(isAutostart) {
@@ -297,7 +353,7 @@ function sortByHeader(key) {
 }
 
 function updateLiveSortIcons() {
-  const keys = ['name', 'pid', 'connections', 'down', 'up', 'cpu', 'limit'];
+  const keys = ['name', 'pid', 'connections', 'down', 'up', 'cpu', 'ram', 'limit'];
   keys.forEach(k => {
     const iconEl = document.getElementById(`sortIcon-${k}`);
     if (!iconEl) return;
@@ -346,6 +402,7 @@ function renderProcesses() {
     if (currentSortKey === 'name') return a.name.localeCompare(b.name) * mult;
     if (currentSortKey === 'pid') return (a.pid - b.pid) * mult;
     if (currentSortKey === 'cpu') return (a.cpu_percent - b.cpu_percent) * mult;
+    if (currentSortKey === 'ram') return (a.memory_mb - b.memory_mb) * mult;
     if (currentSortKey === 'limit') {
       const aLim = a.limit_kbps || 0;
       const bLim = b.limit_kbps || 0;
@@ -361,7 +418,7 @@ function renderProcesses() {
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr class="empty-row">
-        <td colspan="8">
+        <td colspan="9">
           <p>No matching active processes found.</p>
         </td>
       </tr>
@@ -414,7 +471,8 @@ function renderProcesses() {
             </div>
           </div>
         </td>
-        <td><span class="pid-tag">${p.cpu_percent.toFixed(1)}% / ${p.memory_mb} MB</span></td>
+        <td><span class="pid-tag">${p.cpu_percent.toFixed(1)}%</span></td>
+        <td><span class="pid-tag">${p.memory_mb.toLocaleString()} MB</span></td>
         <td>${limitBadge}</td>
         <td class="text-right">
           <button class="btn-sm-limit" onclick="openLimitModal('${escapeHtml(p.name)}', '${escapeHtml(p.name)} (${p.pid})', '${escapeHtml(p.exe)}', ${p.limit_kbps || 0}, '${p.priority || 'normal'}')">
@@ -721,73 +779,175 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ==========================================================================
-   v3.0 GLOBAL CYBER MAP ENGINE
+   v3.0 GLOBAL CYBER MAP ENGINE (LEAFLET INTERACTIVE REAL-WORLD MAP)
    ========================================================================== */
-function loadGlobalMapData() {
-  const nodesGroup = document.getElementById('mapNodesGroup');
+let leafletMap = null;
+let mapLayersGroup = null;
+
+function initCyberMap() {
+  if (leafletMap || !window.L) return;
+  const container = document.getElementById('cyberLeafletMap');
+  if (!container) return;
+
+  leafletMap = L.map('cyberLeafletMap', {
+    zoomControl: true,
+    attributionControl: false,
+    minZoom: 2,
+    maxZoom: 18,
+    worldCopyJump: true
+  }).setView([25, 20], 2);
+
+  // High-Resolution CartoDB Dark Matter Real World Tile Layer
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    subdomains: 'abcd'
+  }).addTo(leafletMap);
+
+  mapLayersGroup = L.layerGroup().addTo(leafletMap);
+}
+
+function resetMapZoom() {
+  if (leafletMap) {
+    leafletMap.setView([25, 20], 2);
+    showToast("Map view reset to global perspective", "info");
+  }
+}
+
+function createArcPoints(start, end, numPoints = 20) {
+  const points = [];
+  const startLat = start[0], startLng = start[1];
+  const endLat = end[0], endLng = end[1];
+
+  for (let i = 0; i <= numPoints; i++) {
+    const f = i / numPoints;
+    const lat = startLat + (endLat - startLat) * f;
+    const lng = startLng + (endLng - startLng) * f;
+    // Arc elevation height based on distance
+    const dist = Math.sqrt(Math.pow(endLat - startLat, 2) + Math.pow(endLng - startLng, 2));
+    const arcHeight = Math.sin(Math.PI * f) * Math.min(25, dist * 0.25);
+    points.push([lat + arcHeight, lng]);
+  }
+  return points;
+}
+
+function loadGlobalMapData(isManualRefresh = false) {
   const destList = document.getElementById('activeDestList');
+  const refreshIcon = document.getElementById('mapRefreshIcon');
+
+  if (isManualRefresh && refreshIcon) {
+    refreshIcon.classList.remove('icon-spin');
+    void refreshIcon.offsetWidth;
+    refreshIcon.classList.add('icon-spin');
+  }
+
+  if (!leafletMap) {
+    initCyberMap();
+  }
+
+  setTimeout(() => {
+    if (leafletMap) leafletMap.invalidateSize();
+  }, 100);
+
   if (destList) destList.innerHTML = `<div class="loading-spinner"></div>`;
 
   fetch('/api/map/connections')
     .then(res => res.json())
     .then(nodes => {
-      if (!nodesGroup || !destList) return;
+      if (mapLayersGroup) mapLayersGroup.clearLayers();
 
-      // Coordinate projection (Equirectangular to SVG 1000x500)
-      const homeX = (126.978 + 180) * (1000 / 360);
-      const homeY = (90 - 37.566) * (500 / 180);
+      const homeLatLng = [37.5665, 126.9780]; // Seoul, South Korea
 
-      let svgHtml = `
-        <!-- Home Node (Korea) -->
-        <circle cx="${homeX}" cy="${homeY}" r="6" fill="#00F5D4" filter="url(#glowFilter)"/>
-        <circle cx="${homeX}" cy="${homeY}" r="14" fill="none" stroke="#00F5D4" stroke-width="1.5" opacity="0.6">
-          <animate attributeName="r" values="6;22;6" dur="2s" repeatCount="indefinite"/>
-          <animate attributeName="opacity" values="0.8;0.0;0.8" dur="2s" repeatCount="indefinite"/>
-        </circle>
-      `;
+      if (mapLayersGroup) {
+        // 1. Home Pulse Marker (South Korea)
+        L.circleMarker(homeLatLng, {
+          radius: 8,
+          fillColor: '#00F5D4',
+          color: '#FFFFFF',
+          weight: 2,
+          fillOpacity: 0.95
+        }).addTo(mapLayersGroup).bindPopup(`
+          <div style="font-weight:700;color:#00F5D4;">🏠 Home Origin (South Korea)</div>
+          <div style="font-size:0.75rem;color:#94A3B8;margin-top:2px;">Local Workstation Gateway</div>
+        `);
 
-      if (nodes.length === 0) {
-        destList.innerHTML = `<p class="empty-text">No active outbound internet sessions detected.</p>`;
-        nodesGroup.innerHTML = svgHtml;
+        L.circle(homeLatLng, {
+          radius: 350000,
+          color: '#00F5D4',
+          weight: 1,
+          opacity: 0.5,
+          fillColor: '#00F5D4',
+          fillOpacity: 0.08
+        }).addTo(mapLayersGroup);
+      }
+
+      if (!nodes || nodes.length === 0) {
+        if (destList) destList.innerHTML = `<p class="empty-text">No active outbound internet sessions detected.</p>`;
+        if (isManualRefresh) showToast("Global telemetry refreshed (0 sessions)", "info");
         return;
       }
 
-      destList.innerHTML = nodes.map(n => `
-        <div class="dest-card">
-          <div class="dest-info-left">
-            <span class="dest-name">${n.flag || '🌐'} ${escapeHtml(n.org || n.rdns || n.ip)}</span>
-            <span class="dest-sub">${n.proc_name} &bull; ${n.ip}:${n.port}</span>
+      if (destList) {
+        destList.innerHTML = nodes.map(n => `
+          <div class="dest-card" onclick="flyToTarget(${n.lat}, ${n.lon})" style="cursor:pointer;" title="Click to zoom in on map">
+            <div class="dest-info-left">
+              <span class="dest-name">${n.flag || '🌐'} ${escapeHtml(n.org || n.rdns || n.ip)}</span>
+              <span class="dest-sub">${escapeHtml(n.proc_name)} &bull; ${n.ip}:${n.port}</span>
+            </div>
+            <span class="latency-pill latency-${n.latency_ms > 150 ? 'slow' : (n.latency_ms > 50 ? 'med' : 'fast')}">
+              ${n.latency_ms.toFixed(1)} ms
+            </span>
           </div>
-          <span class="latency-pill latency-${n.latency_ms > 150 ? 'slow' : (n.latency_ms > 50 ? 'med' : 'fast')}">
-            ${n.latency_ms.toFixed(1)} ms
-          </span>
-        </div>
-      `).join('');
+        `).join('');
+      }
 
-      nodes.forEach((n, idx) => {
-        const targetX = (n.lon + 180) * (1000 / 360);
-        const targetY = (90 - n.lat) * (500 / 180);
-        const midX = (homeX + targetX) / 2;
-        const midY = Math.min(homeY, targetY) - 40;
+      if (mapLayersGroup) {
+        nodes.forEach(n => {
+          if (typeof n.lat !== 'number' || typeof n.lon !== 'number') return;
+          const targetLatLng = [n.lat, n.lon];
+          const isDomestic = (n.country === 'KR' || n.country === 'Local');
+          const nodeColor = isDomestic ? '#00F2FE' : '#9D4EDD';
 
-        const pathD = `M${homeX},${homeY} Q${midX},${midY} ${targetX},${targetY}`;
-        const nodeColor = n.country === 'KR' ? '#00F2FE' : '#9D4EDD';
+          // Arc connection line from Korea to Target
+          const arcPoints = createArcPoints(homeLatLng, targetLatLng);
+          L.polyline(arcPoints, {
+            color: nodeColor,
+            weight: 2,
+            opacity: 0.7,
+            dashArray: '6, 6'
+          }).addTo(mapLayersGroup);
 
-        svgHtml += `
-          <!-- Arc Line -->
-          <path d="${pathD}" fill="none" stroke="url(#cyberLineGrad)" stroke-width="1.8" stroke-dasharray="6,4" opacity="0.7">
-            <animate attributeName="stroke-dashoffset" values="40;0" dur="${1.5 + (idx % 3) * 0.5}s" repeatCount="indefinite"/>
-          </path>
-          <!-- Remote Node -->
-          <circle cx="${targetX}" cy="${targetY}" r="4" fill="${nodeColor}" filter="url(#glowFilter)"/>
-        `;
-      });
+          // Target Destination Node Marker
+          L.circleMarker(targetLatLng, {
+            radius: 6,
+            fillColor: nodeColor,
+            color: '#FFFFFF',
+            weight: 1.5,
+            fillOpacity: 0.9
+          }).addTo(mapLayersGroup).bindPopup(`
+            <div style="font-weight:700;color:${nodeColor};font-size:0.9rem;">${n.flag || '🌐'} ${escapeHtml(n.org || n.rdns || n.ip)}</div>
+            <div style="margin-top:4px;font-size:0.78rem;">
+              <div>Process: <strong>${escapeHtml(n.proc_name)}</strong></div>
+              <div>Remote IP: <code>${n.ip}:${n.port}</code></div>
+              <div>Country: <strong>${escapeHtml(n.country)}</strong></div>
+              <div>RTT Latency: <strong style="color:${n.latency_ms > 150 ? '#EF4444' : '#10B981'};">${n.latency_ms.toFixed(1)} ms</strong></div>
+            </div>
+          `);
+        });
+      }
 
-      nodesGroup.innerHTML = svgHtml;
+      if (isManualRefresh) {
+        showToast(`Map updated with ${nodes.length} outbound network sessions`, 'success');
+      }
     })
     .catch(err => {
       if (destList) destList.innerHTML = `<p class="empty-text" style="color:#FF0054;">Failed to load map: ${err.message}</p>`;
     });
+}
+
+function flyToTarget(lat, lon) {
+  if (leafletMap && typeof lat === 'number' && typeof lon === 'number') {
+    leafletMap.flyTo([lat, lon], 5, { duration: 1.2 });
+  }
 }
 
 /* ==========================================================================
@@ -812,16 +972,18 @@ function loadDiagnosticsHealth() {
 
 function executeNslookup() {
   const inputEl = document.getElementById('nslookupInput');
+  const customDnsEl = document.getElementById('nslookupCustomDns');
   const target = inputEl ? inputEl.value.trim() : 'netflix.com';
+  const customDns = customDnsEl ? customDnsEl.value.trim() : '';
   const resEl = document.getElementById('dnsBenchmarkResults');
   if (!target || !resEl) return;
 
-  resEl.innerHTML = `<div class="loading-spinner"></div><p style="text-align:center;font-size:0.8rem;color:var(--text-sub);">Querying DNS providers (KT, SK, LG, Cloudflare, Google)...</p>`;
+  resEl.innerHTML = `<div class="loading-spinner"></div><p style="text-align:center;font-size:0.8rem;color:var(--text-sub);">Querying Corporate & Global DNS providers...</p>`;
 
   fetch('/api/diagnostics/nslookup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ domain: target })
+    body: JSON.stringify({ domain: target, custom_dns: customDns || null })
   })
   .then(res => res.json())
   .then(data => {
@@ -973,19 +1135,66 @@ function renderDailyHistoryTable() {
   if (window.lucide) lucide.createIcons();
 }
 
-function loadAnalyticsData() {
+let currentAnalyticsPeriod = 'today';
+
+const PERIOD_TITLE_MAP = {
+  'today': 'TODAY (00:00~)',
+  '10m': 'LAST 10 MIN',
+  '1h': 'LAST 1 HOUR',
+  '3h': 'LAST 3 HOURS',
+  '6h': 'LAST 6 HOURS',
+  '12h': 'LAST 12 HOURS',
+  '24h': 'LAST 24 HOURS'
+};
+
+function selectAnalyticsPeriod(period) {
+  currentAnalyticsPeriod = period;
+  const periods = ['today', '10m', '1h', '3h', '6h', '12h', '24h'];
+  periods.forEach(p => {
+    const chip = document.getElementById(`chipPeriod-${p}`);
+    if (chip) {
+      if (p === period) chip.classList.add('active');
+      else chip.classList.remove('active');
+    }
+  });
+
+  const titleEl = document.getElementById('topConsumersTitle');
+  if (titleEl) {
+    titleEl.innerText = `BANDWIDTH CONSUMERS (${PERIOD_TITLE_MAP[period] || period.toUpperCase()})`;
+  }
+
+  loadAnalyticsData(false);
+}
+
+function loadAnalyticsData(isManualRefresh = false) {
   const topList = document.getElementById('topConsumersList');
+  const refreshIcon = document.getElementById('analyticsRefreshIcon');
+  const countBadge = document.getElementById('topConsumersCountBadge');
+
+  if (isManualRefresh && refreshIcon) {
+    refreshIcon.classList.remove('icon-spin');
+    void refreshIcon.offsetWidth; // trigger reflow
+    refreshIcon.classList.add('icon-spin');
+  }
+
   if (topList) topList.innerHTML = `<div class="loading-spinner"></div>`;
 
-  // Fetch Top 24h
-  fetch('/api/history/top?hours=24&limit=8')
+  // Fetch Top Consumers based on selected period
+  fetch(`/api/history/top?period=${encodeURIComponent(currentAnalyticsPeriod)}&limit=500`)
     .then(res => res.json())
     .then(items => {
       if (!topList) return;
-      if (items.length === 0) {
-        topList.innerHTML = `<p class="empty-text">No traffic history collected yet. Activity is recorded over time.</p>`;
+      const count = items ? items.length : 0;
+      if (countBadge) countBadge.innerText = `${count} Apps`;
+
+      if (count === 0) {
+        topList.innerHTML = `<p class="empty-text">No network traffic detected during ${PERIOD_TITLE_MAP[currentAnalyticsPeriod] || currentAnalyticsPeriod}.</p>`;
+        if (isManualRefresh) {
+          showToast(`Telemetry updated for ${PERIOD_TITLE_MAP[currentAnalyticsPeriod] || currentAnalyticsPeriod} (0 apps)`, 'info');
+        }
         return;
       }
+
       topList.innerHTML = items.map((item, idx) => `
         <div class="top-item">
           <div class="top-rank">#${idx + 1}</div>
@@ -1005,6 +1214,10 @@ function loadAnalyticsData() {
         </div>
       `).join('');
       if (window.lucide) lucide.createIcons();
+
+      if (isManualRefresh) {
+        showToast(`Refreshed ${count} apps for ${PERIOD_TITLE_MAP[currentAnalyticsPeriod] || currentAnalyticsPeriod}`, 'success');
+      }
     })
     .catch(err => {
       if (topList) topList.innerHTML = `<p class="empty-text error-text">Failed to load analytics: ${err}</p>`;
@@ -1022,6 +1235,35 @@ function loadAnalyticsData() {
       const tbody = document.getElementById('dailyHistoryBody');
       if (tbody) tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Error: ${err}</td></tr>`;
     });
+}
+
+function switchPlaybookLang(lang) {
+  const contentKo = document.getElementById('playbookContentKo');
+  const contentEn = document.getElementById('playbookContentEn');
+  const btnKo = document.getElementById('btnLangKo');
+  const btnEn = document.getElementById('btnLangEn');
+  const titleEl = document.getElementById('playbookHeaderTitle');
+  const subEl = document.getElementById('playbookHeaderSub');
+  const closeBtn = document.getElementById('playbookCloseBtn');
+
+  if (lang === 'en') {
+    if (contentKo) contentKo.style.display = 'none';
+    if (contentEn) contentEn.style.display = 'block';
+    if (btnKo) btnKo.classList.remove('active');
+    if (btnEn) btnEn.classList.add('active');
+    if (titleEl) titleEl.innerText = '📖 Field Ops Manual & Diagnostic Playbook';
+    if (subEl) subEl.innerText = 'SAP / TMS ERP Integration, Latency Root-Cause Analysis & Troubleshooting SOP';
+    if (closeBtn) closeBtn.innerHTML = '<i data-lucide="check"></i> <span>Close Manual</span>';
+  } else {
+    if (contentKo) contentKo.style.display = 'block';
+    if (contentEn) contentEn.style.display = 'none';
+    if (btnKo) btnKo.classList.add('active');
+    if (btnEn) btnEn.classList.remove('active');
+    if (titleEl) titleEl.innerText = '📖 실무 네트워크 장애 진단 매뉴얼 & 활용 팁';
+    if (subEl) subEl.innerText = 'SAP / TMS 해외 연동 장애, 사내 네트워크 렉 원인 규명 및 해결 SOP';
+    if (closeBtn) closeBtn.innerHTML = '<i data-lucide="check"></i> <span>확인 완료</span>';
+  }
+  if (window.lucide) lucide.createIcons();
 }
 
 /* Policies View */
@@ -1104,6 +1346,10 @@ function refreshLimitsAndViews() {
 }
 
 function setLimit(target, appExe, limitKbps, priority = 'normal') {
+  if (!isSystemAdmin && limitKbps > 0) {
+    showToast("⚠️ 일반 사용자 모드에서는 Windows QoS 커널 정책이 실제 적용되지 않을 수 있습니다. (관리자 권한 필요)", "warning");
+  }
+
   // Optimistic instant UI update
   if (limitKbps > 0) {
     activeLimits[target] = {
@@ -1138,7 +1384,7 @@ function setLimit(target, appExe, limitKbps, priority = 'normal') {
     if (data.status === 'ok') {
       showToast(data.message, 'success');
     } else {
-      showToast(`Limit warning: ${data.detail || data.message}`, 'warning');
+      showToast(`QoS 알림: ${data.detail || data.message}`, 'warning');
     }
     refreshLimitsAndViews();
   })
@@ -1966,6 +2212,121 @@ function openReportExplorerFolder() {
 
 function showNotification(message, type = 'info') {
   showToast(message, type);
+}
+
+/* IPConfig (/all) Live Inspector Functions */
+let rawIpconfigOutput = '';
+let isIpconfigRawVisible = false;
+
+function loadIpconfigData(isManualRefresh = false) {
+  const gridEl = document.getElementById('ipconfigAdaptersGrid');
+  const countBadge = document.getElementById('ipconfigAdapterCount');
+  const rawPre = document.getElementById('ipconfigRawPre');
+  const refreshIcon = document.getElementById('ipconfigRefreshIcon');
+
+  if (isManualRefresh && refreshIcon) {
+    refreshIcon.classList.remove('icon-spin');
+    void refreshIcon.offsetWidth;
+    refreshIcon.classList.add('icon-spin');
+  }
+
+  if (gridEl) gridEl.innerHTML = `<div class="loading-spinner"></div>`;
+
+  fetch('/api/diagnostics/ipconfig')
+    .then(res => res.json())
+    .then(data => {
+      rawIpconfigOutput = data.raw_output || '';
+      if (rawPre) rawPre.innerText = rawIpconfigOutput;
+
+      const adapters = data.adapters || [];
+      if (countBadge) countBadge.innerText = `${adapters.length} Adapters Detected`;
+
+      if (!gridEl) return;
+      if (adapters.length === 0) {
+        gridEl.innerHTML = `<p class="empty-text">No active network interfaces detected.</p>`;
+        return;
+      }
+
+      gridEl.innerHTML = adapters.map(a => {
+        const isWifi = (a.name.toLowerCase().includes('wi-fi') || a.name.toLowerCase().includes('wireless') || a.name.includes('무선'));
+        const iconName = isWifi ? 'wifi' : 'network';
+        const dnsHtml = (a.dns_servers && a.dns_servers.length > 0)
+          ? a.dns_servers.map(dns => `<span class="dns-tag-pill">${escapeHtml(dns)}</span>`).join('')
+          : `<span class="adapter-prop-val" style="color:var(--text-sub);">Automatic / Default</span>`;
+
+        return `
+          <div class="adapter-card">
+            <div class="adapter-header">
+              <div>
+                <div class="adapter-title">
+                  <i data-lucide="${iconName}" class="icon-cyan" style="width:18px;height:18px;"></i>
+                  <span>${escapeHtml(a.name)}</span>
+                </div>
+                <div class="adapter-desc">${escapeHtml(a.description || 'Generic Network Controller')}</div>
+              </div>
+              <span class="pid-tag" style="background:rgba(0,242,254,0.1);color:var(--accent-cyan);">DHCP: ${a.dhcp}</span>
+            </div>
+
+            <div class="adapter-details-list">
+              <div class="adapter-prop-row">
+                <span class="adapter-prop-label">IPv4 Address</span>
+                <span class="adapter-prop-val val-ip">${escapeHtml(a.ipv4 || 'Disconnected / No IP')}</span>
+              </div>
+              <div class="adapter-prop-row">
+                <span class="adapter-prop-label">Default Gateway</span>
+                <span class="adapter-prop-val val-gw">${escapeHtml(a.gateway || 'None')}</span>
+              </div>
+              <div class="adapter-prop-row">
+                <span class="adapter-prop-label">Subnet Mask</span>
+                <span class="adapter-prop-val">${escapeHtml(a.subnet || '255.255.255.0')}</span>
+              </div>
+              <div class="adapter-prop-row">
+                <span class="adapter-prop-label">MAC (Physical)</span>
+                <span class="adapter-prop-val val-mac">${escapeHtml(a.mac || 'N/A')}</span>
+              </div>
+              <div class="adapter-prop-row" style="align-items: flex-start; margin-top: 4px;">
+                <span class="adapter-prop-label">DNS Servers</span>
+                <div class="adapter-dns-tags">${dnsHtml}</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (window.lucide) lucide.createIcons();
+
+      if (isManualRefresh) {
+        showToast(`IPConfig network telemetry refreshed (${adapters.length} adapters)`, 'success');
+      }
+    })
+    .catch(err => {
+      if (gridEl) gridEl.innerHTML = `<p class="empty-text error-text">Failed to query IPConfig: ${err}</p>`;
+    });
+}
+
+function toggleIpconfigRawView() {
+  const container = document.getElementById('ipconfigRawContainer');
+  const toggleBtnText = document.getElementById('ipconfigToggleText');
+  isIpconfigRawVisible = !isIpconfigRawVisible;
+
+  if (container) {
+    container.style.display = isIpconfigRawVisible ? 'block' : 'none';
+  }
+  if (toggleBtnText) {
+    toggleBtnText.innerText = isIpconfigRawVisible ? 'Hide Raw Console' : 'Show Raw Console';
+  }
+}
+
+function copyIpconfigRaw() {
+  if (!rawIpconfigOutput) {
+    showToast("IPConfig output not yet loaded.", "warning");
+    return;
+  }
+  navigator.clipboard.writeText(rawIpconfigOutput).then(() => {
+    showToast("ipconfig /all 원문 전체가 클립보드에 복사되었습니다!", "success");
+  }).catch(err => {
+    showToast("복사 실패: " + err.message, "danger");
+  });
 }
 
 function escapeHtml(str) {

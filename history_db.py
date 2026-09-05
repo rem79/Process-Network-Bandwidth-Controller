@@ -115,11 +115,18 @@ class HistoryDB:
         except Exception as e:
             logging.error(f"Error saving traffic batch: {e}")
 
-    def get_top_consumers(self, period_hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_top_consumers(self, period_hours: Optional[float] = 24.0, limit: int = 500, today_only: bool = False) -> List[Dict[str, Any]]:
         """
-        Returns top network consumers over the specified hourly window.
+        Returns top network consumers over the specified window (or today from 00:00:00).
         """
-        since_time = time.time() - (period_hours * 3600)
+        curr_time = time.time()
+        if today_only or period_hours is None or period_hours == 0:
+            # Start of today (00:00:00 local time)
+            today_start = datetime.fromtimestamp(curr_time).replace(hour=0, minute=0, second=0, microsecond=0)
+            since_time = today_start.timestamp()
+        else:
+            since_time = curr_time - (float(period_hours) * 3600.0)
+
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()

@@ -158,16 +158,23 @@ def acquire_single_instance_mutex(is_elevating=False):
 
     # If mutex exists or access denied (meaning higher privilege Admin instance is already holding it)
     if last_error in (ERROR_ALREADY_EXISTS, ERROR_ACCESS_DENIED):
-        try:
-            # Find existing window by title and bring to front
-            hwnd = ctypes.windll.user32.FindWindowW(None, "Process Network Bandwidth Controller")
-            if hwnd:
+        # Check if an existing visible window actually exists
+        hwnd = ctypes.windll.user32.FindWindowW(None, "Process Network Bandwidth Controller")
+        if hwnd:
+            try:
                 SW_RESTORE = 9
                 ctypes.windll.user32.ShowWindow(hwnd, SW_RESTORE)
                 ctypes.windll.user32.SetForegroundWindow(hwnd)
-        except Exception as e:
-            logging.error(f"Error focusing existing window: {e}")
-        return None
+            except Exception as e:
+                logging.error(f"Error focusing existing window: {e}")
+            return None
+        else:
+            # Mutex was held by a stale/headless/zombie background process without a window
+            logging.warning("Mutex exists but no visible window found. Terminating stale background instance...")
+            kill_previous_instances()
+            time.sleep(0.5)
+            handle = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
+            return handle
     return handle
 
 

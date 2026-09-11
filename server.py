@@ -290,7 +290,7 @@ def request_elevation():
         if ret > 32:
             # Terminate current non-admin instance quickly so the new elevated instance gets port 8000 and single-window ownership
             def delayed_exit():
-                time.sleep(0.4)
+                time.sleep(0.1)
                 os._exit(0)
             
             import threading

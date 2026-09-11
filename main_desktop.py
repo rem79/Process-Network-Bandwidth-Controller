@@ -22,6 +22,11 @@ logging.basicConfig(
 )
 logging.info("Desktop Sentinel App Starting...")
 
+# Isolate WebView2 User Data Folder into AppData to prevent UAC / permission blank screens
+WEBVIEW2_CACHE_DIR = os.path.join(APPDATA_DIR, "WebView2_Cache")
+os.makedirs(WEBVIEW2_CACHE_DIR, exist_ok=True)
+os.environ["WEBVIEW2_USER_DATA_FOLDER"] = WEBVIEW2_CACHE_DIR
+
 # Global Window Handle
 app_window = None
 tray_icon = None
@@ -103,9 +108,33 @@ def run_server():
     try:
         import uvicorn
         from server import app
-        uvicorn.run(app, host="127.0.0.1", port=8000, log_level="error")
+        # If port 8000 is briefly in TIME_WAIT from the previous instance, retry for a moment
+        for attempt in range(15):
+            try:
+                config = uvicorn.Config(app, host="127.0.0.1", port=8000, log_level="error")
+                server = uvicorn.Server(config)
+                server.run()
+                break
+            except Exception as e:
+                logging.warning(f"Uvicorn bind attempt {attempt+1} failed: {e}. Retrying in 0.3s...")
+                time.sleep(0.3)
     except Exception as e:
         logging.error(f"Error running uvicorn server: {e}", exc_info=True)
+
+def wait_for_server_ready(port=8000, timeout=10.0):
+    """Waits until FastAPI backend is responding with 200 OK before creating WebView window."""
+    import urllib.request
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/system-info", timeout=1.0) as resp:
+                if resp.status == 200:
+                    logging.info("FastAPI backend is ready and responding!")
+                    return True
+        except Exception:
+            time.sleep(0.2)
+    logging.warning("Timed out waiting for FastAPI backend to respond.")
+    return False
 
 def create_tray_image():
     """
@@ -202,7 +231,8 @@ def main():
     tray_thread = threading.Thread(target=setup_tray, daemon=True)
     tray_thread.start()
 
-    time.sleep(1.0)
+    logging.info("Waiting for FastAPI backend to be fully initialized...")
+    wait_for_server_ready(port=8000, timeout=10.0)
 
     logging.info("Creating PyWebView desktop window...")
     app_window = webview.create_window(

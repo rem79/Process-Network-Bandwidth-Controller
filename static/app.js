@@ -475,7 +475,7 @@ function renderProcesses() {
         <td><span class="pid-tag">${p.memory_mb.toLocaleString()} MB</span></td>
         <td>${limitBadge}</td>
         <td class="text-right">
-          <button class="btn-sm-limit" onclick="openLimitModal('${escapeHtml(p.name)}', '${escapeHtml(p.name)} (${p.pid})', '${escapeHtml(p.exe)}', ${p.limit_kbps || 0}, '${p.priority || 'normal'}')">
+          <button class="btn-sm-limit" data-target="${escapeHtml(p.name)}" data-name="${escapeHtml(p.name)} (${p.pid})" data-exe="${encodeURIComponent(p.exe || p.name)}" data-kbps="${p.limit_kbps || 0}" data-priority="${p.priority || 'normal'}" data-direction="${p.direction || 'both'}" onclick="openLimitModalFromDataset(this)">
             <i data-lucide="sliders"></i> Throttle
           </button>
         </td>
@@ -487,7 +487,7 @@ function renderProcesses() {
 }
 
 /* Modal Speed Limiter Dialog Controls */
-function openLimitModal(targetName, displayTitle, appExe = '', currentKbps = 0, priority = 'normal') {
+function openLimitModal(targetName, displayTitle, appExe = '', currentKbps = 0, priority = 'normal', direction = 'both') {
   currentModalTarget = targetName;
   currentModalExe = appExe || targetName;
 
@@ -503,6 +503,9 @@ function openLimitModal(targetName, displayTitle, appExe = '', currentKbps = 0, 
   const priorityEl = document.getElementById('prioritySelect');
   if (priorityEl) priorityEl.value = priority || 'normal';
 
+  const dirEl = document.getElementById('limitDirectionSelect');
+  if (dirEl) dirEl.value = direction || 'both';
+
   const initVal = currentKbps > 0 ? currentKbps : 1024;
   updateModalValueDisplays(initVal);
 
@@ -513,10 +516,17 @@ function openLimitModal(targetName, displayTitle, appExe = '', currentKbps = 0, 
 function openLimitModalFromDataset(el) {
   const target = el.getAttribute('data-target') || '';
   const name = el.getAttribute('data-name') || target;
-  const exe = el.getAttribute('data-exe') || target;
+  const rawExe = el.getAttribute('data-exe') || '';
+  let exe = target;
+  try {
+    exe = rawExe ? decodeURIComponent(rawExe) : target;
+  } catch (e) {
+    exe = rawExe || target;
+  }
   const kbps = parseInt(el.getAttribute('data-kbps'), 10) || 0;
   const priority = el.getAttribute('data-priority') || 'normal';
-  openLimitModal(target, name, exe, kbps, priority);
+  const direction = el.getAttribute('data-direction') || 'both';
+  openLimitModal(target, name, exe, kbps, priority, direction);
 }
 
 function closeLimitModal() {
@@ -578,8 +588,10 @@ function updateModalValueDisplays(kbps, updateUnitInputs = true) {
 
 function submitLimitModal() {
   const kbps = parseInt(document.getElementById('customLimitInput').value, 10) || 0;
-  const priority = document.getElementById('prioritySelect').value;
-  setLimit(currentModalTarget, currentModalExe, kbps, priority);
+  const priority = document.getElementById('prioritySelect') ? document.getElementById('prioritySelect').value : 'normal';
+  const dirEl = document.getElementById('limitDirectionSelect');
+  const direction = dirEl ? dirEl.value : 'both';
+  setLimit(currentModalTarget, currentModalExe, kbps, priority, direction);
   closeLimitModal();
 }
 
@@ -1289,8 +1301,9 @@ function renderFullPoliciesView() {
         </div>
         <div class="policy-card-bottom">
           <span class="priority-tag priority-${item.priority || 'normal'}">Priority: ${(item.priority || 'normal').toUpperCase()}</span>
+          <span class="trend-tag ${item.direction === 'up' ? 'tag-violet' : 'tag-cyan'}">${item.direction === 'up' ? 'UPLOAD ONLY' : 'DOWNLOAD & INBOUND'}</span>
           <div class="policy-actions">
-            <button class="btn-sm-edit" title="Adjust Speed Limit" data-target="${escapeHtml(item.target)}" data-name="${escapeHtml(item.target)}" data-exe="${escapeHtml(item.app_exe || item.target)}" data-kbps="${item.kbps || 0}" data-priority="${escapeHtml(item.priority || 'normal')}" onclick="openLimitModalFromDataset(this)">
+            <button class="btn-sm-edit" title="Adjust Speed Limit" data-target="${escapeHtml(item.target)}" data-name="${escapeHtml(item.target)}" data-exe="${encodeURIComponent(item.app_exe || item.target)}" data-kbps="${item.kbps || 0}" data-priority="${escapeHtml(item.priority || 'normal')}" data-direction="${escapeHtml(item.direction || 'both')}" onclick="openLimitModalFromDataset(this)">
               <i data-lucide="sliders"></i> Adjust Limit
             </button>
             <button class="btn-sm-danger" title="Remove QoS Policy" onclick="removeLimit('${escapeHtml(item.target)}'); setTimeout(renderFullPoliciesView, 400);">
@@ -1345,7 +1358,7 @@ function refreshLimitsAndViews() {
     .catch(err => console.error("Error refreshing limits:", err));
 }
 
-function setLimit(target, appExe, limitKbps, priority = 'normal') {
+function setLimit(target, appExe, limitKbps, priority = 'normal', direction = 'both') {
   if (!isSystemAdmin && limitKbps > 0) {
     showToast("⚠️ 일반 사용자 모드에서는 Windows QoS 커널 정책이 실제 적용되지 않을 수 있습니다. (관리자 권한 필요)", "warning");
   }
@@ -1357,6 +1370,7 @@ function setLimit(target, appExe, limitKbps, priority = 'normal') {
       app_exe: appExe || target,
       kbps: limitKbps,
       priority: priority,
+      direction: direction,
       active: true
     };
   } else {
@@ -1376,7 +1390,8 @@ function setLimit(target, appExe, limitKbps, priority = 'normal') {
       target: target,
       app_exe: appExe,
       limit_kbps: limitKbps,
-      priority: priority
+      priority: priority,
+      direction: direction
     })
   })
   .then(res => res.json())

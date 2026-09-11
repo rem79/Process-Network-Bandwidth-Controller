@@ -477,13 +477,17 @@ class LimitRequest(BaseModel):
     app_exe: str = ""    # Optional full app exe path or process name
     limit_kbps: int      # Speed limit in KB/s (0 to remove)
     priority: str = "normal" # Priority: "high", "normal", "low"
+    direction: str = "both"  # "both" (Download & Inbound), "up" (Upload & Outbound)
 
 @app.post("/api/limit")
 def set_limit(req: LimitRequest):
     app_exe = req.app_exe or req.target
     if req.target.lower() == "global":
         app_exe = "*"
-    success, msg = qos_manager.set_limit(req.target, app_exe, req.limit_kbps, priority=req.priority)
+    success, msg = qos_manager.set_limit(
+        req.target, app_exe, req.limit_kbps,
+        priority=req.priority, direction=req.direction
+    )
     if not success:
         raise HTTPException(status_code=400, detail=msg)
     return {"status": "ok", "message": msg}

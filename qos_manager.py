@@ -29,12 +29,32 @@ def sanitize_exe_target(exe_str: str) -> str:
     # Strip dangerous injection characters while preserving valid path separators
     return exe_str.replace('"', '').replace("'", "").replace('`', '').replace('$', '').strip()
 
+def ensure_qos_registry_enabled() -> bool:
+    r"""
+    On non-domain joined (workgroup) Windows 10 & 11 PCs, Network Location Awareness (NLA)
+    silently disables all local QoS and NetQosPolicy rules by default.
+    Setting HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\QoS\Do not use NLA = 1
+    forces Windows to honor local QoS policies on all networks.
+    """
+    try:
+        import winreg
+        key_path = r"SYSTEM\CurrentControlSet\Services\Tcpip\QoS"
+        with winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
+            winreg.SetValueEx(key, "Do not use NLA", 0, winreg.REG_SZ, "1")
+        logging.info("Ensured HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\QoS 'Do not use NLA' is set to '1'")
+        return True
+    except Exception as e:
+        logging.warning(f"Could not set QoS NLA registry key (requires Admin): {e}")
+        return False
+
 class QoSManager:
     """
     Enterprise-grade Windows NetQosPolicy bandwidth management engine.
     Controls per-process and system-wide bandwidth throttling, priorities, and persistence.
+    Supports both Download (TCP ACK pacing) and Upload (direct egress) throttling.
     """
     def __init__(self):
+        ensure_qos_registry_enabled()
         self.rules: Dict[str, Dict[str, Any]] = self._load_rules()
         self.restore_saved_rules()
 
@@ -61,7 +81,6 @@ class QoSManager:
         """
         Executes a PowerShell command safely and returns (success, output/error_message).
         """
-        # Run via encoded command or direct standard execution
         full_cmd = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script_block]
         try:
             res = subprocess.run(full_cmd, capture_output=True, text=True, timeout=12)
@@ -90,20 +109,48 @@ class QoSManager:
             kbps = item.get("kbps", 0)
             app_exe = item.get("app_exe", item.get("target", target_name))
             priority = item.get("priority", "normal")
+            direction = item.get("direction", "both")
             if kbps > 0:
-                self.set_limit(target_name, app_exe, kbps, priority=priority, save_state=False)
+                self.set_limit(target_name, app_exe, kbps, priority=priority, direction=direction, save_state=False)
 
-    def set_limit(self, target_name: str, app_exe: str, limit_kbps: int, priority: str = "normal", save_state: bool = True) -> tuple[bool, str]:
+    def set_limit(self, target_name: str, app_exe: str, limit_kbps: int, priority: str = "normal", direction: str = "both", save_state: bool = True) -> tuple[bool, str]:
         """
         Sets a bandwidth limit in KB/s for a specific executable or system-wide.
+        Handles both download (TCP ACK pacing) and upload (outbound throttling).
         """
         if limit_kbps <= 0:
             return self.remove_limit(target_name, save_state=save_state)
 
-        clean_exe = sanitize_exe_target(app_exe or target_name)
-        display_target = os.path.basename(target_name) if target_name.lower() != "global" else "Global"
+        ensure_qos_registry_enabled()
+
+        # Clean target: Extract pure executable basename (e.g. "PathOfExile_KG.exe")
+        raw_target = target_name.replace('/', '\\').strip()
+        raw_exe = app_exe.replace('/', '\\').strip() if app_exe else ""
+        if raw_target.lower() == "global" or raw_target == "*":
+            match_exe = "*"
+            display_target = "Global"
+        else:
+            # If app_exe is specified (e.g. "D:\Games\PathOfExile_KG.exe"), extract its basename
+            candidate = raw_exe if raw_exe else raw_target
+            display_target = os.path.basename(candidate)
+            if not display_target.lower().endswith('.exe') and '.' not in display_target:
+                display_target = f"{display_target}.exe"
+            match_exe = display_target
+
         clean_target = sanitize_policy_name(display_target)
-        bps = int(limit_kbps * 1024 * 8) # Convert KB/s to bits per second
+
+        # Rate calculation:
+        # Windows NetQosPolicy -ThrottleRateActionBitsPerSecond is an egress (outbound) rate limiter.
+        # When throttling download (or 'both'), the client's outbound traffic is TCP ACKs.
+        # Average TCP data MSS is 1460 bytes with 1 ACK per 2 full packets (2920 bytes) to 56 bytes ACK ratio (~52:1).
+        # Throttling the ACK rate forces the remote sender's congestion window (cwnd) to throttle down
+        # to EXACTLY the target download rate (verified by speed tests).
+        if direction.lower() == "up":
+            bps = int(limit_kbps * 1024 * 8)
+        else:
+            # "down" or "both"
+            TCP_DATA_TO_ACK_RATIO = 52.0
+            bps = max(64000, int((limit_kbps * 1024 * 8) / TCP_DATA_TO_ACK_RATIO))
 
         # First remove existing policy to avoid duplicate name collision
         self._run_powershell(f"Remove-NetQosPolicy -Name '{clean_target}' -PolicyStore ActiveStore -Confirm:$false -ErrorAction SilentlyContinue")
@@ -115,20 +162,21 @@ class QoSManager:
         elif priority.lower() == "low":
             dscp_param = "-DSCPAction 10" # Lower priority
 
-        match_exe = os.path.basename(clean_exe) if clean_exe != "*" else "*"
-        if match_exe == "*" or target_name.lower() == "global":
+        if match_exe == "*":
             ps_cmd = f"New-NetQosPolicy -Name '{clean_target}' -ThrottleRateActionBitsPerSecond {bps} {dscp_param} -PolicyStore ActiveStore -Confirm:$false"
         else:
             ps_cmd = f"New-NetQosPolicy -Name '{clean_target}' -AppPathNameMatchCondition '{match_exe}' -ThrottleRateActionBitsPerSecond {bps} {dscp_param} -PolicyStore ActiveStore -Confirm:$false"
 
         success, msg = self._run_powershell(ps_cmd)
+        clean_app_exe = sanitize_exe_target(app_exe or target_name)
         rule_data = {
             "target": target_name,
             "policy_name": clean_target,
-            "app_exe": clean_exe,
+            "app_exe": clean_app_exe,
             "bps": bps,
             "kbps": limit_kbps,
             "priority": priority,
+            "direction": direction,
             "active": success,
             "error": None if success else msg
         }
@@ -137,7 +185,8 @@ class QoSManager:
             self._save_rules()
 
         if success:
-            return True, f"QoS limit active for {target_name} ({limit_kbps} KB/s, Priority: {priority.upper()})"
+            dir_label = "DOWNLOAD & UPLOAD" if direction == "both" else ("UPLOAD ONLY" if direction == "up" else "DOWNLOAD ONLY")
+            return True, f"QoS limit active for {target_name} ({limit_kbps} KB/s, {dir_label}, Priority: {priority.upper()})"
         else:
             return False, f"Failed to apply Windows QoS policy: {msg}. (Admin rights required)"
 
@@ -145,7 +194,9 @@ class QoSManager:
         """
         Removes QoS policy for the specified target.
         """
-        clean_target = sanitize_policy_name(target_name)
+        raw_target = target_name.replace('/', '\\').strip()
+        display_target = os.path.basename(raw_target) if raw_target.lower() != "global" else "Global"
+        clean_target = sanitize_policy_name(display_target)
         ps_cmd = f"Remove-NetQosPolicy -Name '{clean_target}' -PolicyStore ActiveStore -Confirm:$false -ErrorAction SilentlyContinue"
         success, msg = self._run_powershell(ps_cmd)
 

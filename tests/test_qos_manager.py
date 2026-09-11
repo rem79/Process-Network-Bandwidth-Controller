@@ -23,6 +23,26 @@ class TestQoSManager(unittest.TestCase):
         self.assertEqual(rules["test_app.exe"]["kbps"], 2048)
         self.assertEqual(rules["test_app.exe"]["priority"], "high")
 
+        # Test direction and ACK pacing calculation
+        manager._run_powershell.reset_mock()
+        success, msg = manager.set_limit("poe.exe", r"D:\Games\PoE\PathOfExile_KG.exe", 1024, direction="down", save_state=False)
+        self.assertTrue(success)
+        self.assertIn("poe.exe", manager.get_all_limits())
+        self.assertEqual(manager.get_all_limits()["poe.exe"]["direction"], "down")
+        # Verify that match condition stripped path to basename
+        ps_call = manager._run_powershell.call_args[0][0]
+        self.assertIn("-AppPathNameMatchCondition 'PathOfExile_KG.exe'", ps_call)
+        # Verify ACK pacing rate: (1024 * 1024 * 8) / 52.0 = 161319 bps
+        expected_ack_bps = int((1024 * 1024 * 8) / 52.0)
+        self.assertIn(f"-ThrottleRateActionBitsPerSecond {expected_ack_bps}", ps_call)
+
+        # Test upload rate (direct bps)
+        manager._run_powershell.reset_mock()
+        success, msg = manager.set_limit("poe.exe", "poe.exe", 1024, direction="up", save_state=False)
+        self.assertTrue(success)
+        ps_call_up = manager._run_powershell.call_args[0][0]
+        self.assertIn(f"-ThrottleRateActionBitsPerSecond {1024 * 1024 * 8}", ps_call_up)
+
         # Remove
         success, msg = manager.remove_limit("test_app.exe", save_state=False)
         self.assertTrue(success)

@@ -43,13 +43,14 @@ class TestServerDirectAPI(unittest.TestCase):
     def test_set_and_remove_limit(self):
         qos_manager._run_powershell = MagicMock(return_value=(True, "OK"))
 
-        req = LimitRequest(target="test_browser.exe", app_exe="test_browser.exe", limit_kbps=5120, priority="high")
+        req = LimitRequest(target="test_browser.exe", app_exe="test_browser.exe", limit_kbps=5120, priority="high", direction="down")
         res = set_limit(req)
         self.assertEqual(res["status"], "ok")
 
         limits = get_limits()
         self.assertIn("test_browser.exe", limits)
         self.assertEqual(limits["test_browser.exe"]["kbps"], 5120)
+        self.assertEqual(limits["test_browser.exe"]["direction"], "down")
 
         del_res = remove_limit("test_browser.exe")
         self.assertEqual(del_res["status"], "ok")

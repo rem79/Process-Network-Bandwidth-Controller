@@ -370,5 +370,134 @@ class TestDownloadDetection(unittest.TestCase):
         if ld_proc:
             self.assertLess(ld_proc['down_speed'], 2_000_000, "LDPlayer must receive its minor share")
 
+    @patch('psutil.net_io_counters')
+    @patch('psutil.net_connections')
+    @patch('psutil.process_iter')
+    def test_ldplayer_vmdk_writes_do_not_steal_poe2_download(self, mock_proc_iter, mock_net_conns, mock_net_io):
+        """
+        Real-world user case:
+        - Global download: 10.79 MB/s
+        - PoE 2 (PID 42356): 19 parallel connections to CDN (203.133.186.91), writing 157 KB/s to disk
+        - 3 LDPlayer instances with 62 total connections to diverse IPs, writing 4.27 MB/s to VMDKs
+        Verify that PoE 2 captures ~10.7 MB/s and LDPlayer VMDK writes are completely ignored.
+        """
+        dt = 1.0
+        mock_net_io.side_effect = [
+            MagicMock(bytes_recv=100_000_000, bytes_sent=10_000_000),
+            MagicMock(bytes_recv=110_790_000, bytes_sent=10_050_000) # +10.79 MB down
+        ]
+
+        conns = []
+        # PoE 2: 19 connections to the same CDN host IP
+        for _ in range(19):
+            c = MagicMock()
+            c.pid = 42356
+            c.status = 'ESTABLISHED'
+            c.raddr = MagicMock(ip='203.133.186.91')
+            conns.append(c)
+
+        # LDPlayer 1: 26 connections scattered across different remote IPs (max 2 per IP)
+        for i in range(26):
+            c = MagicMock()
+            c.pid = 44128
+            c.status = 'ESTABLISHED'
+            c.raddr = MagicMock(ip=f'172.217.16.{i // 2}')
+            conns.append(c)
+
+        # LDPlayer 2: 17 connections scattered (1 per IP)
+        for i in range(17):
+            c = MagicMock()
+            c.pid = 22332
+            c.status = 'ESTABLISHED'
+            c.raddr = MagicMock(ip=f'142.250.72.{i}')
+            conns.append(c)
+
+        # LDPlayer 3: 19 connections scattered (1 per IP)
+        for i in range(19):
+            c = MagicMock()
+            c.pid = 48348
+            c.status = 'ESTABLISHED'
+            c.raddr = MagicMock(ip=f'157.240.22.{i}')
+            conns.append(c)
+
+        mock_net_conns.return_value = conns
+
+        poe_mock = MagicMock()
+        poe_mock.info = {
+            'pid': 42356,
+            'name': 'PathOfExile_KG.exe',
+            'exe': 'D:\\Daum Games\\Path of Exile2\\PathOfExile_KG.exe',
+            'cpu_percent': 22.3,
+            'memory_info': MagicMock(rss=180 * 1024 * 1024)
+        }
+        ld1_mock = MagicMock()
+        ld1_mock.info = {
+            'pid': 44128,
+            'name': 'Ld9BoxHeadless.exe',
+            'exe': 'C:\\LDPlayer\\Ld9BoxHeadless.exe',
+            'cpu_percent': 115.4,
+            'memory_info': MagicMock(rss=500 * 1024 * 1024)
+        }
+        ld2_mock = MagicMock()
+        ld2_mock.info = {
+            'pid': 22332,
+            'name': 'Ld9BoxHeadless.exe',
+            'exe': 'C:\\LDPlayer\\Ld9BoxHeadless.exe',
+            'cpu_percent': 88.9,
+            'memory_info': MagicMock(rss=500 * 1024 * 1024)
+        }
+        ld3_mock = MagicMock()
+        ld3_mock.info = {
+            'pid': 48348,
+            'name': 'Ld9BoxHeadless.exe',
+            'exe': 'C:\\LDPlayer\\Ld9BoxHeadless.exe',
+            'cpu_percent': 88.7,
+            'memory_info': MagicMock(rss=500 * 1024 * 1024)
+        }
+
+        # Cycle 1
+        poe_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=1000)
+        ld1_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=1000)
+        ld2_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=1000)
+        ld3_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=1000)
+        mock_proc_iter.return_value = [poe_mock, ld1_mock, ld2_mock, ld3_mock]
+
+        self.tracker.prev_time = time.time() - dt
+        self.tracker.get_snapshot()
+
+        # Cycle 2:
+        curr_t = time.time()
+        self.tracker.prev_proc_io[42356] = (1000, 5000, 1000, curr_t - 1.0)
+        self.tracker.prev_proc_io[44128] = (1000, 5000, 1000, curr_t - 1.0)
+        self.tracker.prev_proc_io[22332] = (1000, 5000, 1000, curr_t - 1.0)
+        self.tracker.prev_proc_io[48348] = (1000, 5000, 1000, curr_t - 1.0)
+        self.tracker.prev_time = curr_t - 1.0
+
+        # PoE writes only 157 KB/s to disk; LDPlayers write 3.45 MB/s, 589 KB/s, 230 KB/s to VMDKs
+        poe_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000 + 157_000, other_bytes=1000)
+        ld1_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000 + 3_450_000, other_bytes=1000)
+        ld2_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000 + 589_000, other_bytes=1000)
+        ld3_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000 + 230_000, other_bytes=1000)
+
+        snap = self.tracker.get_snapshot()
+
+        poe_proc = next((p for p in snap['processes'] if p['pid'] == 42356), None)
+        ld1_proc = next((p for p in snap['processes'] if p['pid'] == 44128), None)
+        ld2_proc = next((p for p in snap['processes'] if p['pid'] == 22332), None)
+        ld3_proc = next((p for p in snap['processes'] if p['pid'] == 48348), None)
+
+        self.assertIsNotNone(poe_proc, "PathOfExile_KG.exe must be found")
+        # PoE 2 should capture the entire 10.79 MB/s download!
+        self.assertGreater(poe_proc['down_speed'], 10_000_000, "PoE 2 must capture ~10.79 MB/s")
+        self.assertEqual(poe_proc['connections'], 19)
+
+        # None of the LDPlayer instances should receive network download attribution from their VMDK writes
+        if ld1_proc:
+            self.assertEqual(ld1_proc['down_speed'], 0.0, "LDPlayer VMDK writes must NOT be attributed network download")
+        if ld2_proc:
+            self.assertEqual(ld2_proc['down_speed'], 0.0, "LDPlayer VMDK writes must NOT be attributed network download")
+        if ld3_proc:
+            self.assertEqual(ld3_proc['down_speed'], 0.0, "LDPlayer VMDK writes must NOT be attributed network download")
+
 if __name__ == '__main__':
     unittest.main()

@@ -64,6 +64,14 @@ SYSTEM_UI_EXCLUDED_NAMES = {
     'startmenuexperiencehost.exe', 'system', 'registry', 'taskmgr.exe'
 }
 
+VM_EMULATOR_NAMES = {
+    'ld9boxheadless.exe', 'ldboxheadless.exe', 'dnplayer.exe',
+    'hd-player.exe', 'bluestacks.exe', 'nox.exe', 'noxvmhandle.exe',
+    'virtualboxvm.exe', 'vboxheadless.exe', 'vmware-vmx.exe',
+    'vmware.exe', 'qemu-system-x86_64.exe', 'vmmem', 'wsl.exe',
+    'mumuplayer.exe', 'nemuplayer.exe', 'memu.exe', 'memuheadless.exe'
+}
+
 class ProcessTracker:
     def __init__(self):
         self.prev_global_io = psutil.net_io_counters()
@@ -102,23 +110,34 @@ class ProcessTracker:
                 # 2. For TCP: status is ESTABLISHED, SYN_SENT, or SYN_RECV (NOT TIME_WAIT, CLOSE_WAIT, LISTEN)
                 # 3. For UDP: has remote address
                 is_active_remote = False
+                remote_ip = None
                 if conn.raddr:
-                    rip = conn.raddr.ip
-                    if rip not in ('127.0.0.1', '::1', '0.0.0.0', '::') and not rip.startswith('127.'):
+                    rip = getattr(conn.raddr, 'ip', None)
+                    if rip and rip not in ('127.0.0.1', '::1', '0.0.0.0', '::') and not rip.startswith('127.'):
                         status = getattr(conn, 'status', None)
                         if status:
                             if status in ('ESTABLISHED', 'SYN_SENT', 'SYN_RECV'):
                                 is_active_remote = True
+                                remote_ip = rip
                         else:
                             is_active_remote = True
+                            remote_ip = rip
 
                 if conn.pid and conn.pid > 0:
                     if conn.pid not in pid_conn_info:
-                        pid_conn_info[conn.pid] = {"count": 0, "has_remote": False, "remote_count": 0}
+                        pid_conn_info[conn.pid] = {
+                            "count": 0,
+                            "has_remote": False,
+                            "remote_count": 0,
+                            "remote_ips": {}
+                        }
                     pid_conn_info[conn.pid]["count"] += 1
                     if is_active_remote:
                         pid_conn_info[conn.pid]["has_remote"] = True
                         pid_conn_info[conn.pid]["remote_count"] += 1
+                        if remote_ip:
+                            ip_map = pid_conn_info[conn.pid]["remote_ips"]
+                            ip_map[remote_ip] = ip_map.get(remote_ip, 0) + 1
                 else:
                     if is_active_remote:
                         unowned_remote_count += 1
@@ -141,8 +160,11 @@ class ProcessTracker:
                 conn_count = conn_info["count"] if conn_info else 0
                 has_remote = conn_info["has_remote"] if conn_info else False
                 remote_count = conn_info["remote_count"] if conn_info else 0
+                remote_ips = conn_info["remote_ips"] if conn_info else {}
+                max_same_host_conns = max(remote_ips.values()) if remote_ips else (1 if has_remote else 0)
                 is_limited = (name.lower() in active_limits or name in active_limits)
                 is_excluded_ui = name.lower() in SYSTEM_UI_EXCLUDED_NAMES
+                is_vm_emulator = name.lower() in VM_EMULATOR_NAMES
 
                 # Get process IO counters
                 io = None
@@ -185,17 +207,28 @@ class ProcessTracker:
                 cand_down = 0.0
                 cand_up = 0.0
 
+                # Emulators and VMs continuously write guest OS memory, dalvik/art cache, and logs
+                # to host virtual disk image files (e.g. data.vmdk, .vdi).
+                # Their disk write_bytes and read_bytes MUST NOT be falsely counted as internet download or upload!
+                eff_w_rate = 0.0 if is_vm_emulator else raw_w_rate
+                eff_r_rate = 0.0 if is_vm_emulator else raw_r_rate
+
                 # Determine if this process is eligible for network traffic attribution
                 is_candidate = False
                 if is_limited:
                     is_candidate = True
                 elif has_remote:
-                    is_candidate = True
-                elif conn_count == 0 and unowned_remote_count > 0 and not is_excluded_ui and (down_bytes_sec > 1024 or up_bytes_sec > 1024):
+                    # An emulator with only background keep-alives (max_same_host_conns < 4) is NOT
+                    # an active bulk downloader unless it has real socket IO (raw_o_rate)
+                    if is_vm_emulator and max_same_host_conns < 4 and raw_o_rate < 50 * 1024:
+                        is_candidate = False
+                    else:
+                        is_candidate = True
+                elif conn_count == 0 and unowned_remote_count > 0 and not is_excluded_ui and not is_vm_emulator and (down_bytes_sec > 1024 or up_bytes_sec > 1024):
                     # In Windows User Mode, elevated processes have their socket PIDs masked (conn.pid is None).
                     # If there are active unowned remote connections and process I/O activity correlates with network,
                     # qualify as an elevated candidate.
-                    max_io = max(raw_r_rate, raw_w_rate, raw_o_rate)
+                    max_io = max(eff_r_rate, eff_w_rate, raw_o_rate)
                     if down_bytes_sec > up_bytes_sec * 1.5:
                         if max_io > 50 * 1024 and max_io <= down_bytes_sec * 2.5:
                             is_candidate = True
@@ -212,28 +245,29 @@ class ProcessTracker:
                         # Dominant system download (e.g. game patcher, browser file download, streaming)
                         # Downloaded chunks written to disk (write_bytes), socket read (read_bytes),
                         # or Winsock socket AFD/IOCTLs (other_bytes)
-                        cand_down = max(raw_r_rate, raw_w_rate, raw_o_rate)
-                        cand_up = min(min(raw_r_rate, raw_w_rate), up_bytes_sec)
+                        cand_down = max(eff_r_rate, eff_w_rate, raw_o_rate)
+                        cand_up = min(min(eff_r_rate, eff_w_rate), up_bytes_sec)
                     elif up_bytes_sec > down_bytes_sec * 1.5:
                         # Dominant system upload (e.g. cloud backup, file upload)
                         # File read from disk (read_bytes) or socket send (write_bytes/other_bytes)
-                        cand_up = max(raw_r_rate, raw_w_rate, raw_o_rate)
-                        cand_down = min(min(raw_r_rate, raw_w_rate), down_bytes_sec)
+                        cand_up = max(eff_r_rate, eff_w_rate, raw_o_rate)
+                        cand_down = min(min(eff_r_rate, eff_w_rate), down_bytes_sec)
                     else:
                         # Mixed / balanced traffic
-                        best_rate = max(raw_r_rate, raw_w_rate, raw_o_rate)
+                        best_rate = max(eff_r_rate, eff_w_rate, raw_o_rate)
                         if down_bytes_sec >= up_bytes_sec:
                             cand_down = best_rate
-                            cand_up = min(raw_r_rate, up_bytes_sec)
+                            cand_up = min(eff_r_rate, up_bytes_sec)
                         else:
                             cand_up = best_rate
-                            cand_down = min(raw_w_rate, down_bytes_sec)
+                            cand_down = min(eff_w_rate, down_bytes_sec)
 
                     # If conn_count was 0 due to User Mode UAC masking, give at least 1 socket indication
-                    if conn_count == 0 and not is_excluded_ui and (cand_down > 50 * 1024 or cand_up > 50 * 1024):
+                    if conn_count == 0 and not is_excluded_ui and not is_vm_emulator and (cand_down > 50 * 1024 or cand_up > 50 * 1024):
                         conn_count = max(1, min(unowned_remote_count, 8))
                         remote_count = conn_count
                         has_remote = True
+                        max_same_host_conns = remote_count
 
                 mem_mb = (proc.info['memory_info'].rss / (1024 * 1024)) if proc.info['memory_info'] else 0.0
                 proc_limit = active_limits.get(name) or active_limits.get(name.lower())
@@ -245,6 +279,7 @@ class ProcessTracker:
                     "conn_count": conn_count,
                     "has_remote": has_remote,
                     "remote_count": remote_count,
+                    "max_same_host_conns": max_same_host_conns,
                     "cand_down": cand_down,
                     "cand_up": cand_up,
                     "proc_dt": proc_dt,
@@ -264,12 +299,30 @@ class ProcessTracker:
         # distribute unallocated download throughput to processes with active remote connections.
         if down_bytes_sec > total_cand_down and down_bytes_sec > 50 * 1024:
             unallocated_down = down_bytes_sec - total_cand_down
+            # Filter candidate downloaders:
+            # 1. Must have remote connections and not be a system UI renderer
+            # 2. Exclude VM emulators unless they have parallel streams to the same host (>= 4 conns)
             net_downloaders = [
                 c for c in raw_candidates
-                if c["has_remote"] and c["name"].lower() not in SYSTEM_UI_EXCLUDED_NAMES
+                if c["has_remote"]
+                and c["name"].lower() not in SYSTEM_UI_EXCLUDED_NAMES
+                and (c["name"].lower() not in VM_EMULATOR_NAMES or c.get("max_same_host_conns", 0) >= 4)
             ]
+            # Fallback if only emulators are active on the system
+            if not net_downloaders:
+                net_downloaders = [
+                    c for c in raw_candidates
+                    if c["has_remote"] and c["name"].lower() not in SYSTEM_UI_EXCLUDED_NAMES
+                ]
             if net_downloaders:
-                weights = [max(1, c.get("remote_count", 1)) ** 2 for c in net_downloaders]
+                # Parallel stream concentration factor:
+                # Sockets to the SAME remote host represent concurrent parallel download chunks.
+                # Scatter sockets across different hosts represent background keep-alive/push sockets.
+                # Weight by (max_same_host_conns ** 2) * max(1, remote_count)
+                weights = [
+                    (max(1, c.get("max_same_host_conns", 1)) ** 2) * max(1, c.get("remote_count", 1))
+                    for c in net_downloaders
+                ]
                 sum_weights = sum(weights)
                 if sum_weights > 0:
                     for c, w in zip(net_downloaders, weights):
@@ -281,10 +334,20 @@ class ProcessTracker:
             unallocated_up = up_bytes_sec - total_cand_up
             net_uploaders = [
                 c for c in raw_candidates
-                if c["has_remote"] and c["name"].lower() not in SYSTEM_UI_EXCLUDED_NAMES
+                if c["has_remote"]
+                and c["name"].lower() not in SYSTEM_UI_EXCLUDED_NAMES
+                and (c["name"].lower() not in VM_EMULATOR_NAMES or c.get("max_same_host_conns", 0) >= 4)
             ]
+            if not net_uploaders:
+                net_uploaders = [
+                    c for c in raw_candidates
+                    if c["has_remote"] and c["name"].lower() not in SYSTEM_UI_EXCLUDED_NAMES
+                ]
             if net_uploaders:
-                weights = [max(1, c.get("remote_count", 1)) ** 2 for c in net_uploaders]
+                weights = [
+                    (max(1, c.get("max_same_host_conns", 1)) ** 2) * max(1, c.get("remote_count", 1))
+                    for c in net_uploaders
+                ]
                 sum_weights = sum(weights)
                 if sum_weights > 0:
                     for c, w in zip(net_uploaders, weights):

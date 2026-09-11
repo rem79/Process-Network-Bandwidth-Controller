@@ -22,10 +22,109 @@ logging.basicConfig(
 )
 logging.info("Desktop Sentinel App Starting...")
 
-# Isolate WebView2 User Data Folder into AppData to prevent UAC / permission blank screens
-WEBVIEW2_CACHE_DIR = os.path.join(APPDATA_DIR, "WebView2_Cache")
+# Determine if running with Administrator privileges
+is_admin_mode = False
+try:
+    is_admin_mode = ctypes.windll.shell32.IsUserAnAdmin() != 0
+except Exception:
+    pass
+
+# Isolate WebView2 User Data Folder into separate Admin vs User caches to prevent ACL/lock collisions
+cache_folder_name = "WebView2_Admin_Cache" if is_admin_mode else "WebView2_User_Cache"
+WEBVIEW2_CACHE_DIR = os.path.join(APPDATA_DIR, cache_folder_name)
 os.makedirs(WEBVIEW2_CACHE_DIR, exist_ok=True)
 os.environ["WEBVIEW2_USER_DATA_FOLDER"] = WEBVIEW2_CACHE_DIR
+
+# Critical Chromium / WebView2 flags:
+# When running elevated as Administrator on Windows 10/11, Chromium's GPU hardware acceleration
+# and LowIL sandbox trigger D3D11 compositor device loss and watchdog crashes, leading to a black screen.
+# Disabling GPU hardware acceleration and sandbox restrictions ensures 100% stable, crash-free rendering.
+browser_args = [
+    "--disable-gpu",
+    "--disable-gpu-compositing",
+    "--disable-software-rasterizer",
+    "--no-sandbox",
+    "--disable-features=ElasticOverscroll,msSmartScreenProtection",
+    "--disable-dev-shm-usage",
+    "--allow-insecure-localhost"
+]
+os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = " ".join(browser_args)
+
+# Monkey-patch pywebview's EdgeChrome creation properties to inject the anti-black-screen arguments
+try:
+    import webview.platforms.edgechromium as ec
+    from webview import settings as webview_settings
+    from webview.platforms.edgechromium import (
+        WebView2, CoreWebView2CreationProperties, Color, WinForms, Semaphore,
+        TaskScheduler, DEFAULT_HTML, _state, get_app_root
+    )
+
+    def patched_edge_init(self, form, window, cache_dir):
+        self.pywebview_window = window
+        self.webview = WebView2()
+        props = CoreWebView2CreationProperties()
+
+        runtime_path = webview_settings.get('WEBVIEW2_RUNTIME_PATH')
+        if runtime_path:
+            if not os.path.isabs(runtime_path):
+                runtime_path = os.path.join(get_app_root(), runtime_path)
+            if os.path.exists(runtime_path):
+                props.BrowserExecutableFolder = runtime_path
+
+        props.UserDataFolder = cache_dir or WEBVIEW2_CACHE_DIR
+        self.user_data_folder = props.UserDataFolder
+        props.set_IsInPrivateModeEnabled(_state.get('private_mode', False))
+
+        # Explicitly set all anti-black-screen arguments
+        extra_args = [
+            '--disable-features=ElasticOverscroll,msSmartScreenProtection',
+            '--disable-gpu',
+            '--disable-gpu-compositing',
+            '--disable-software-rasterizer',
+            '--no-sandbox',
+            '--disable-dev-shm-usage',
+            '--allow-insecure-localhost'
+        ]
+        if webview_settings.get('ALLOW_FILE_URLS'):
+            extra_args.append('--allow-file-access-from-files')
+        if webview_settings.get('REMOTE_DEBUGGING_PORT') is not None:
+            extra_args.append(f'--remote-debugging-port={webview_settings["REMOTE_DEBUGGING_PORT"]}')
+
+        props.AdditionalBrowserArguments = ' '.join(extra_args)
+        self.webview.CreationProperties = props
+
+        self.form = form
+        form.Controls.Add(self.webview)
+
+        self.js_results = {}
+        self.js_result_semaphore = Semaphore(0)
+        self.webview.Dock = WinForms.DockStyle.Fill
+        self.webview.BringToFront()
+        self.webview.CoreWebView2InitializationCompleted += self.on_webview_ready
+        self.webview.NavigationStarting += self.on_navigation_start
+        self.webview.NavigationCompleted += self.on_navigation_completed
+        self.webview.WebMessageReceived += self.on_script_notify
+        self.syncContextTaskScheduler = TaskScheduler.FromCurrentSynchronizationContext()
+        self.webview.DefaultBackgroundColor = Color.FromArgb(
+            255,
+            int(window.background_color.lstrip('#')[0:2], 16),
+            int(window.background_color.lstrip('#')[2:4], 16),
+            int(window.background_color.lstrip('#')[4:6], 16),
+        )
+
+        if window.transparent:
+            self.webview.DefaultBackgroundColor = Color.Transparent
+
+        self.url = None
+        self.ishtml = False
+        self.html = DEFAULT_HTML
+
+        self.webview.EnsureCoreWebView2Async(None)
+
+    ec.EdgeChrome.__init__ = patched_edge_init
+    logging.info("Successfully installed EdgeChrome patch for Administrator black screen prevention.")
+except Exception as e:
+    logging.warning(f"Could not apply EdgeChrome patch: {e}")
 
 # Global Window Handle
 app_window = None
@@ -248,7 +347,7 @@ def main():
     app_window.events.closing += on_closing
 
     logging.info("Starting PyWebView event loop...")
-    webview.start(private_mode=False)
+    webview.start(private_mode=False, storage_path=WEBVIEW2_CACHE_DIR)
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()

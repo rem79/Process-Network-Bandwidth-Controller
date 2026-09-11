@@ -86,18 +86,23 @@ class ProcessTracker:
         }
 
         # 2. Get active network connections grouped by PID
-        pid_connections: Dict[int, int] = {}
+        pid_conn_info: Dict[int, Dict[str, Any]] = {}
         try:
             connections = psutil.net_connections(kind='inet')
             for conn in connections:
                 if conn.pid and conn.pid > 0:
-                    pid_connections[conn.pid] = pid_connections.get(conn.pid, 0) + 1
+                    if conn.pid not in pid_conn_info:
+                        pid_conn_info[conn.pid] = {"count": 0, "has_remote": False}
+                    pid_conn_info[conn.pid]["count"] += 1
+                    if conn.raddr:
+                        rip = conn.raddr.ip
+                        if rip not in ('127.0.0.1', '::1', '0.0.0.0', '::') and not rip.startswith('127.'):
+                            pid_conn_info[conn.pid]["has_remote"] = True
         except Exception as e:
             logging.debug(f"Error fetching net connections: {e}")
 
-        # 3. Process IO calculation & DB sampling
-        proc_list: List[Dict[str, Any]] = []
-        db_samples: List[Dict[str, Any]] = []
+        # 3. Process IO collection & preliminary candidate evaluation
+        raw_candidates: List[Dict[str, Any]] = []
         active_limits = qos_manager.get_all_limits()
 
         for proc in psutil.process_iter(['pid', 'name', 'exe', 'cpu_percent', 'memory_info']):
@@ -108,7 +113,10 @@ class ProcessTracker:
 
                 name = proc.info['name'] or f"PID {pid}"
                 exe = proc.info['exe'] or ""
-                conn_count = pid_connections.get(pid, 0)
+                conn_info = pid_conn_info.get(pid)
+                conn_count = conn_info["count"] if conn_info else 0
+                has_remote = conn_info["has_remote"] if conn_info else False
+                is_limited = (name.lower() in active_limits or name in active_limits)
 
                 # Get process IO counters
                 io = None
@@ -120,53 +128,124 @@ class ProcessTracker:
                 read_bytes = io.read_bytes if io else 0
                 write_bytes = io.write_bytes if io else 0
 
-                p_up_speed = 0.0
-                p_down_speed = 0.0
-                delta_down = 0.0
-                delta_up = 0.0
+                raw_r_rate = 0.0
+                raw_w_rate = 0.0
+                proc_dt = dt
 
                 if pid in self.prev_proc_io:
                     prev_r, prev_w, prev_t = self.prev_proc_io[pid]
                     proc_dt = max(curr_time - prev_t, 0.001)
-                    # read_bytes represents received traffic, write_bytes represents sent traffic
-                    delta_down = max(0.0, read_bytes - prev_r)
-                    delta_up = max(0.0, write_bytes - prev_w)
-                    p_down_speed = delta_down / proc_dt
-                    p_up_speed = delta_up / proc_dt
+                    raw_r_rate = max(0.0, (read_bytes - prev_r) / proc_dt)
+                    raw_w_rate = max(0.0, (write_bytes - prev_w) / proc_dt)
 
                 self.prev_proc_io[pid] = (read_bytes, write_bytes, curr_time)
 
-                # If process has network activity or connections, collect for DB and UI
-                if delta_up > 0 or delta_down > 0:
-                    db_samples.append({
-                        "pid": pid,
-                        "name": name,
-                        "exe": exe,
-                        "up_bytes": delta_up,
-                        "down_bytes": delta_down,
-                        "timestamp": curr_time
-                    })
+                # Candidate attribution logic
+                cand_down = 0.0
+                cand_up = 0.0
 
-                if conn_count > 0 or p_up_speed > 100 or p_down_speed > 100 or name.lower() in active_limits:
-                    mem_mb = (proc.info['memory_info'].rss / (1024 * 1024)) if proc.info['memory_info'] else 0.0
-                    proc_limit = active_limits.get(name) or active_limits.get(name.lower())
+                # Processes with no network connections and no QoS limit do not produce network traffic
+                if conn_count > 0 or is_limited:
+                    if down_bytes_sec > up_bytes_sec * 1.5:
+                        # Dominant system download (e.g. game patcher, browser file download, streaming)
+                        # Downloaded chunks written to disk (write_bytes) or socket read (read_bytes)
+                        cand_down = max(raw_r_rate, raw_w_rate)
+                        cand_up = min(min(raw_r_rate, raw_w_rate), up_bytes_sec)
+                    elif up_bytes_sec > down_bytes_sec * 1.5:
+                        # Dominant system upload (e.g. cloud backup, file upload)
+                        # File read from disk (read_bytes) or socket send (write_bytes)
+                        cand_up = max(raw_r_rate, raw_w_rate)
+                        cand_down = min(min(raw_r_rate, raw_w_rate), down_bytes_sec)
+                    else:
+                        # Mixed / balanced traffic
+                        if raw_w_rate > raw_r_rate * 2.0 and down_bytes_sec >= up_bytes_sec:
+                            cand_down = raw_w_rate
+                            cand_up = min(raw_r_rate, up_bytes_sec)
+                        elif raw_r_rate > raw_w_rate * 2.0 and up_bytes_sec >= down_bytes_sec:
+                            cand_up = raw_r_rate
+                            cand_down = min(raw_w_rate, down_bytes_sec)
+                        else:
+                            cand_down = raw_r_rate
+                            cand_up = raw_w_rate
 
-                    proc_list.append({
-                        "pid": pid,
-                        "name": name,
-                        "exe": exe,
-                        "up_speed": p_up_speed,
-                        "down_speed": p_down_speed,
-                        "up_formatted": format_bytes(p_up_speed),
-                        "down_formatted": format_bytes(p_down_speed),
-                        "connections": conn_count,
-                        "cpu_percent": proc.info['cpu_percent'] or 0.0,
-                        "memory_mb": round(mem_mb, 1),
-                        "limit_kbps": proc_limit["kbps"] if proc_limit else None,
-                        "priority": proc_limit.get("priority", "normal") if proc_limit else None
-                    })
+                mem_mb = (proc.info['memory_info'].rss / (1024 * 1024)) if proc.info['memory_info'] else 0.0
+                proc_limit = active_limits.get(name) or active_limits.get(name.lower())
+
+                raw_candidates.append({
+                    "pid": pid,
+                    "name": name,
+                    "exe": exe,
+                    "conn_count": conn_count,
+                    "has_remote": has_remote,
+                    "cand_down": cand_down,
+                    "cand_up": cand_up,
+                    "proc_dt": proc_dt,
+                    "cpu_percent": proc.info['cpu_percent'] or 0.0,
+                    "memory_mb": round(mem_mb, 1),
+                    "proc_limit": proc_limit
+                })
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
+
+        # 4. Global calibration and attribution normalization
+        total_cand_down = sum(c["cand_down"] for c in raw_candidates)
+        total_cand_up = sum(c["cand_up"] for c in raw_candidates)
+
+        scale_down = 1.0
+        if total_cand_down > down_bytes_sec * 1.05 and down_bytes_sec > 1024:
+            scale_down = down_bytes_sec / total_cand_down
+
+        scale_up = 1.0
+        if total_cand_up > up_bytes_sec * 1.05 and up_bytes_sec > 1024:
+            scale_up = up_bytes_sec / total_cand_up
+
+        proc_list: List[Dict[str, Any]] = []
+        db_samples: List[Dict[str, Any]] = []
+
+        for c in raw_candidates:
+            p_down_speed = c["cand_down"] * scale_down
+            p_up_speed = c["cand_up"] * scale_up
+
+            # Ensure single process cannot exceed global adapter rate
+            if down_bytes_sec > 0:
+                p_down_speed = min(p_down_speed, down_bytes_sec * 1.15)
+            else:
+                p_down_speed = 0.0
+
+            if up_bytes_sec > 0:
+                p_up_speed = min(p_up_speed, up_bytes_sec * 1.15)
+            else:
+                p_up_speed = 0.0
+
+            delta_down = p_down_speed * c["proc_dt"]
+            delta_up = p_up_speed * c["proc_dt"]
+
+            # Collect for DB history if active
+            if delta_up > 0 or delta_down > 0:
+                db_samples.append({
+                    "pid": c["pid"],
+                    "name": c["name"],
+                    "exe": c["exe"],
+                    "up_bytes": delta_up,
+                    "down_bytes": delta_down,
+                    "timestamp": curr_time
+                })
+
+            if c["conn_count"] > 0 or p_up_speed > 100 or p_down_speed > 100 or c["proc_limit"]:
+                proc_list.append({
+                    "pid": c["pid"],
+                    "name": c["name"],
+                    "exe": c["exe"],
+                    "up_speed": p_up_speed,
+                    "down_speed": p_down_speed,
+                    "up_formatted": format_bytes(p_up_speed),
+                    "down_formatted": format_bytes(p_down_speed),
+                    "connections": c["conn_count"],
+                    "cpu_percent": c["cpu_percent"],
+                    "memory_mb": c["memory_mb"],
+                    "limit_kbps": c["proc_limit"]["kbps"] if c["proc_limit"] else None,
+                    "priority": c["proc_limit"].get("priority", "normal") if c["proc_limit"] else None
+                })
 
         # Record to SQLite DB
         if db_samples:

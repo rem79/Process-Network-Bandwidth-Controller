@@ -265,5 +265,110 @@ class TestDownloadDetection(unittest.TestCase):
             self.assertEqual(wv_proc['down_speed'], 0.0, "Loopback WebView2 must not be attributed internet download")
             self.assertEqual(wv_proc['up_speed'], 0.0)
 
+    @patch('psutil.net_io_counters')
+    @patch('psutil.net_connections')
+    @patch('psutil.process_iter')
+    def test_poe2_competing_with_webview2_and_unallocated_traffic(self, mock_proc_iter, mock_net_conns, mock_net_io):
+        """PoE 2 with 16 sockets downloading 10.4 MB/s in memory must be attributed ~10 MB/s,
+        while WebView2 writing 3 MB/s cache with 0 sockets must receive 0 B/s."""
+        dt = 1.0
+        mock_net_io.side_effect = [
+            MagicMock(bytes_recv=100_000_000, bytes_sent=10_000_000),
+            MagicMock(bytes_recv=111_080_000, bytes_sent=10_360_000) # 11.08 MB/s down, 360 KB/s up
+        ]
+
+        # 16 sockets for PoE 2 (PID 2516)
+        conns = []
+        for port in range(16):
+            c = MagicMock()
+            c.pid = 2516
+            c.status = 'ESTABLISHED'
+            c.raddr = MagicMock(ip='203.133.186.91')
+            conns.append(c)
+
+        # 4 sockets for LDPlayer (PID 43552)
+        for port in range(4):
+            c = MagicMock()
+            c.pid = 43552
+            c.status = 'ESTABLISHED'
+            c.raddr = MagicMock(ip='142.250.190.10')
+            conns.append(c)
+
+        # dead TIME_WAIT socket with pid=0 (should NOT trigger unowned remote)
+        dead_c = MagicMock()
+        dead_c.pid = 0
+        dead_c.status = 'TIME_WAIT'
+        dead_c.raddr = MagicMock(ip='1.2.3.4')
+        conns.append(dead_c)
+
+        mock_net_conns.return_value = conns
+
+        # Processes: PoE 2, LDPlayer, WebView2
+        poe_mock = MagicMock()
+        poe_mock.info = {
+            'pid': 2516,
+            'name': 'PathOfExile_KG.exe',
+            'exe': 'D:\\Daum Games\\Path of Exile2\\PathOfExile_KG.exe',
+            'cpu_percent': 20.3,
+            'memory_info': MagicMock(rss=125 * 1024 * 1024)
+        }
+        ld_mock = MagicMock()
+        ld_mock.info = {
+            'pid': 43552,
+            'name': 'Ld9BoxHeadless.exe',
+            'exe': 'C:\\Program Files\\ldplayer\\Ld9BoxHeadless.exe',
+            'cpu_percent': 70.0,
+            'memory_info': MagicMock(rss=85 * 1024 * 1024)
+        }
+        wv_mock = MagicMock()
+        wv_mock.info = {
+            'pid': 35344,
+            'name': 'msedgewebview2.exe',
+            'exe': 'C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\msedgewebview2.exe',
+            'cpu_percent': 21.7,
+            'memory_info': MagicMock(rss=146 * 1024 * 1024)
+        }
+
+        # Cycle 1
+        poe_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=10000)
+        ld_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=10000)
+        wv_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=10000)
+        mock_proc_iter.return_value = [poe_mock, ld_mock, wv_mock]
+        self.tracker.prev_time = time.time() - dt
+        self.tracker.get_snapshot()
+
+        # Cycle 2:
+        # - PoE only records 165 KB/s disk writes (buffered in RAM)
+        # - LDPlayer records 500 KB/s disk writes
+        # - WebView2 writes 3.12 MB/s UI/GPU cache (0 sockets)
+        time.sleep(0.02)
+        curr_t = time.time()
+        self.tracker.prev_proc_io[2516] = (1000, 5000, 10000, curr_t - 1.0)
+        self.tracker.prev_proc_io[43552] = (1000, 5000, 10000, curr_t - 1.0)
+        self.tracker.prev_proc_io[35344] = (1000, 5000, 10000, curr_t - 1.0)
+        self.tracker.prev_time = curr_t - 1.0
+
+        poe_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000 + 165_000, other_bytes=10000)
+        ld_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000 + 500_000, other_bytes=10000)
+        wv_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000 + 3_120_000, other_bytes=10000)
+
+        snap = self.tracker.get_snapshot()
+
+        poe_proc = next((p for p in snap['processes'] if p['pid'] == 2516), None)
+        wv_proc = next((p for p in snap['processes'] if p['pid'] == 35344), None)
+        ld_proc = next((p for p in snap['processes'] if p['pid'] == 43552), None)
+
+        self.assertIsNotNone(poe_proc, "PathOfExile_KG.exe must be detected")
+        self.assertGreater(poe_proc['down_speed'], 9_500_000, "PoE 2 must capture ~10 MB/s of the download")
+        self.assertEqual(poe_proc['connections'], 16)
+        self.assertIn("MB/s", poe_proc['down_formatted'])
+
+        if wv_proc:
+            self.assertEqual(wv_proc['down_speed'], 0.0, "WebView2 with 0 sockets must receive 0 B/s download")
+            self.assertEqual(wv_proc['connections'], 0, "WebView2 must NOT spoof 8 sockets")
+
+        if ld_proc:
+            self.assertLess(ld_proc['down_speed'], 2_000_000, "LDPlayer must receive its minor share")
+
 if __name__ == '__main__':
     unittest.main()

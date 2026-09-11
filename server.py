@@ -58,6 +58,12 @@ def is_admin() -> bool:
     except Exception:
         return False
 
+SYSTEM_UI_EXCLUDED_NAMES = {
+    'msedgewebview2.exe', 'searchhost.exe', 'shellexperiencehost.exe',
+    'dwm.exe', 'explorer.exe', 'textinputhost.exe', 'runtimebroker.exe',
+    'startmenuexperiencehost.exe', 'system', 'registry', 'taskmgr.exe'
+}
+
 class ProcessTracker:
     def __init__(self):
         self.prev_global_io = psutil.net_io_counters()
@@ -70,7 +76,7 @@ class ProcessTracker:
         dt = max(curr_time - self.prev_time, 0.001)
         self.prev_time = curr_time
 
-        # 1. Global IO calculation
+        # 1. Global network interface throughput
         curr_global_io = psutil.net_io_counters()
         up_bytes_sec = max(0.0, (curr_global_io.bytes_sent - self.prev_global_io.bytes_sent) / dt)
         down_bytes_sec = max(0.0, (curr_global_io.bytes_recv - self.prev_global_io.bytes_recv) / dt)
@@ -91,19 +97,31 @@ class ProcessTracker:
         try:
             connections = psutil.net_connections(kind='inet')
             for conn in connections:
+                # Active remote connection criteria:
+                # 1. Non-loopback remote address
+                # 2. For TCP: status is ESTABLISHED, SYN_SENT, or SYN_RECV (NOT TIME_WAIT, CLOSE_WAIT, LISTEN)
+                # 3. For UDP: has remote address
+                is_active_remote = False
+                if conn.raddr:
+                    rip = conn.raddr.ip
+                    if rip not in ('127.0.0.1', '::1', '0.0.0.0', '::') and not rip.startswith('127.'):
+                        status = getattr(conn, 'status', None)
+                        if status:
+                            if status in ('ESTABLISHED', 'SYN_SENT', 'SYN_RECV'):
+                                is_active_remote = True
+                        else:
+                            is_active_remote = True
+
                 if conn.pid and conn.pid > 0:
                     if conn.pid not in pid_conn_info:
-                        pid_conn_info[conn.pid] = {"count": 0, "has_remote": False}
+                        pid_conn_info[conn.pid] = {"count": 0, "has_remote": False, "remote_count": 0}
                     pid_conn_info[conn.pid]["count"] += 1
-                    if conn.raddr:
-                        rip = conn.raddr.ip
-                        if rip not in ('127.0.0.1', '::1', '0.0.0.0', '::') and not rip.startswith('127.'):
-                            pid_conn_info[conn.pid]["has_remote"] = True
+                    if is_active_remote:
+                        pid_conn_info[conn.pid]["has_remote"] = True
+                        pid_conn_info[conn.pid]["remote_count"] += 1
                 else:
-                    if conn.raddr:
-                        rip = conn.raddr.ip
-                        if rip not in ('127.0.0.1', '::1', '0.0.0.0', '::') and not rip.startswith('127.'):
-                            unowned_remote_count += 1
+                    if is_active_remote:
+                        unowned_remote_count += 1
         except Exception as e:
             logging.debug(f"Error fetching net connections: {e}")
 
@@ -122,7 +140,9 @@ class ProcessTracker:
                 conn_info = pid_conn_info.get(pid)
                 conn_count = conn_info["count"] if conn_info else 0
                 has_remote = conn_info["has_remote"] if conn_info else False
+                remote_count = conn_info["remote_count"] if conn_info else 0
                 is_limited = (name.lower() in active_limits or name in active_limits)
+                is_excluded_ui = name.lower() in SYSTEM_UI_EXCLUDED_NAMES
 
                 # Get process IO counters
                 io = None
@@ -171,11 +191,10 @@ class ProcessTracker:
                     is_candidate = True
                 elif has_remote:
                     is_candidate = True
-                elif conn_count == 0 and (down_bytes_sec > 1024 or up_bytes_sec > 1024):
+                elif conn_count == 0 and unowned_remote_count > 0 and not is_excluded_ui and (down_bytes_sec > 1024 or up_bytes_sec > 1024):
                     # In Windows User Mode, elevated processes have their socket PIDs masked (conn.pid is None).
-                    # If the process I/O activity correlates with active global network throughput,
-                    # it is an elevated downloader/uploader (e.g. game patcher, UAC elevated installer).
-                    # We check read, write, and other_bytes (Winsock socket IOCTLs & memory mapped file writes).
+                    # If there are active unowned remote connections and process I/O activity correlates with network,
+                    # qualify as an elevated candidate.
                     max_io = max(raw_r_rate, raw_w_rate, raw_o_rate)
                     if down_bytes_sec > up_bytes_sec * 1.5:
                         if max_io > 50 * 1024 and max_io <= down_bytes_sec * 2.5:
@@ -211,8 +230,10 @@ class ProcessTracker:
                             cand_down = min(raw_w_rate, down_bytes_sec)
 
                     # If conn_count was 0 due to User Mode UAC masking, give at least 1 socket indication
-                    if conn_count == 0 and (cand_down > 50 * 1024 or cand_up > 50 * 1024):
+                    if conn_count == 0 and not is_excluded_ui and (cand_down > 50 * 1024 or cand_up > 50 * 1024):
                         conn_count = max(1, min(unowned_remote_count, 8))
+                        remote_count = conn_count
+                        has_remote = True
 
                 mem_mb = (proc.info['memory_info'].rss / (1024 * 1024)) if proc.info['memory_info'] else 0.0
                 proc_limit = active_limits.get(name) or active_limits.get(name.lower())
@@ -223,6 +244,7 @@ class ProcessTracker:
                     "exe": exe,
                     "conn_count": conn_count,
                     "has_remote": has_remote,
+                    "remote_count": remote_count,
                     "cand_down": cand_down,
                     "cand_up": cand_up,
                     "proc_dt": proc_dt,
@@ -233,9 +255,41 @@ class ProcessTracker:
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
 
-        # 4. Global calibration and attribution normalization
+        # 4. Global calibration and unallocated bandwidth attribution
         total_cand_down = sum(c["cand_down"] for c in raw_candidates)
         total_cand_up = sum(c["cand_up"] for c in raw_candidates)
+
+        # 4a. If global download exceeds sum of candidate IO rates
+        # (e.g. game patcher, curl, or memory-buffered Winsock stream without synchronous disk writes),
+        # distribute unallocated download throughput to processes with active remote connections.
+        if down_bytes_sec > total_cand_down and down_bytes_sec > 50 * 1024:
+            unallocated_down = down_bytes_sec - total_cand_down
+            net_downloaders = [
+                c for c in raw_candidates
+                if c["has_remote"] and c["name"].lower() not in SYSTEM_UI_EXCLUDED_NAMES
+            ]
+            if net_downloaders:
+                weights = [max(1, c.get("remote_count", 1)) ** 2 for c in net_downloaders]
+                sum_weights = sum(weights)
+                if sum_weights > 0:
+                    for c, w in zip(net_downloaders, weights):
+                        c["cand_down"] += unallocated_down * (w / sum_weights)
+            total_cand_down = sum(c["cand_down"] for c in raw_candidates)
+
+        # 4b. Symmetrically for dominant upload
+        if up_bytes_sec > total_cand_up and up_bytes_sec > 50 * 1024:
+            unallocated_up = up_bytes_sec - total_cand_up
+            net_uploaders = [
+                c for c in raw_candidates
+                if c["has_remote"] and c["name"].lower() not in SYSTEM_UI_EXCLUDED_NAMES
+            ]
+            if net_uploaders:
+                weights = [max(1, c.get("remote_count", 1)) ** 2 for c in net_uploaders]
+                sum_weights = sum(weights)
+                if sum_weights > 0:
+                    for c, w in zip(net_uploaders, weights):
+                        c["cand_up"] += unallocated_up * (w / sum_weights)
+            total_cand_up = sum(c["cand_up"] for c in raw_candidates)
 
         scale_down = 1.0
         if total_cand_down > down_bytes_sec * 1.05 and down_bytes_sec > 1024:

@@ -61,7 +61,7 @@ def is_admin() -> bool:
 class ProcessTracker:
     def __init__(self):
         self.prev_global_io = psutil.net_io_counters()
-        self.prev_proc_io: Dict[int, tuple[float, float, float]] = {} # pid -> (read_bytes, write_bytes, timestamp)
+        self.prev_proc_io: Dict[int, tuple[float, float, float, float]] = {} # pid -> (read_bytes, write_bytes, other_bytes, timestamp)
         self.prev_time = time.time()
         self.batch_counter = 0
 
@@ -131,20 +131,35 @@ class ProcessTracker:
                 except (psutil.AccessDenied, psutil.NoSuchProcess):
                     pass
 
-                read_bytes = io.read_bytes if io else 0
-                write_bytes = io.write_bytes if io else 0
+                read_bytes = 0
+                write_bytes = 0
+                other_bytes = 0
+                if io:
+                    rb = getattr(io, 'read_bytes', 0)
+                    wb = getattr(io, 'write_bytes', 0)
+                    ob = getattr(io, 'other_bytes', 0)
+                    read_bytes = rb if isinstance(rb, (int, float)) else 0
+                    write_bytes = wb if isinstance(wb, (int, float)) else 0
+                    other_bytes = ob if isinstance(ob, (int, float)) else 0
 
                 raw_r_rate = 0.0
                 raw_w_rate = 0.0
+                raw_o_rate = 0.0
                 proc_dt = dt
 
                 if pid in self.prev_proc_io:
-                    prev_r, prev_w, prev_t = self.prev_proc_io[pid]
+                    prev_entry = self.prev_proc_io[pid]
+                    if len(prev_entry) == 4:
+                        prev_r, prev_w, prev_o, prev_t = prev_entry
+                    else:
+                        prev_r, prev_w, prev_t = prev_entry
+                        prev_o = 0
                     proc_dt = max(curr_time - prev_t, 0.001)
                     raw_r_rate = max(0.0, (read_bytes - prev_r) / proc_dt)
                     raw_w_rate = max(0.0, (write_bytes - prev_w) / proc_dt)
+                    raw_o_rate = max(0.0, (other_bytes - prev_o) / proc_dt)
 
-                self.prev_proc_io[pid] = (read_bytes, write_bytes, curr_time)
+                self.prev_proc_io[pid] = (read_bytes, write_bytes, other_bytes, curr_time)
 
                 # Candidate attribution logic
                 cand_down = 0.0
@@ -152,51 +167,48 @@ class ProcessTracker:
 
                 # Determine if this process is eligible for network traffic attribution
                 is_candidate = False
-                if conn_count > 0 or is_limited:
+                if is_limited:
                     is_candidate = True
-                elif (down_bytes_sec > 1024 or up_bytes_sec > 1024):
+                elif has_remote:
+                    is_candidate = True
+                elif conn_count == 0 and (down_bytes_sec > 1024 or up_bytes_sec > 1024):
                     # In Windows User Mode, elevated processes have their socket PIDs masked (conn.pid is None).
                     # If the process I/O activity correlates with active global network throughput,
                     # it is an elevated downloader/uploader (e.g. game patcher, UAC elevated installer).
-                    # Exclude local disk copying operations by checking that the rate is consistent with network speed.
+                    # We check read, write, and other_bytes (Winsock socket IOCTLs & memory mapped file writes).
+                    max_io = max(raw_r_rate, raw_w_rate, raw_o_rate)
                     if down_bytes_sec > up_bytes_sec * 1.5:
-                        if raw_w_rate > 50 * 1024 and raw_w_rate <= down_bytes_sec * 2.5:
-                            is_candidate = True
-                        elif raw_r_rate > 50 * 1024 and raw_r_rate <= down_bytes_sec * 2.5:
+                        if max_io > 50 * 1024 and max_io <= down_bytes_sec * 2.5:
                             is_candidate = True
                     elif up_bytes_sec > down_bytes_sec * 1.5:
-                        if raw_r_rate > 50 * 1024 and raw_r_rate <= up_bytes_sec * 2.5:
-                            is_candidate = True
-                        elif raw_w_rate > 50 * 1024 and raw_w_rate <= up_bytes_sec * 2.5:
+                        if max_io > 50 * 1024 and max_io <= up_bytes_sec * 2.5:
                             is_candidate = True
                     else:
-                        max_rate = max(raw_r_rate, raw_w_rate)
                         total_net = down_bytes_sec + up_bytes_sec
-                        if max_rate > 50 * 1024 and max_rate <= total_net * 2.5:
+                        if max_io > 50 * 1024 and max_io <= total_net * 2.5:
                             is_candidate = True
 
                 if is_candidate:
                     if down_bytes_sec > up_bytes_sec * 1.5:
                         # Dominant system download (e.g. game patcher, browser file download, streaming)
-                        # Downloaded chunks written to disk (write_bytes) or socket read (read_bytes)
-                        cand_down = max(raw_r_rate, raw_w_rate)
+                        # Downloaded chunks written to disk (write_bytes), socket read (read_bytes),
+                        # or Winsock socket AFD/IOCTLs (other_bytes)
+                        cand_down = max(raw_r_rate, raw_w_rate, raw_o_rate)
                         cand_up = min(min(raw_r_rate, raw_w_rate), up_bytes_sec)
                     elif up_bytes_sec > down_bytes_sec * 1.5:
                         # Dominant system upload (e.g. cloud backup, file upload)
-                        # File read from disk (read_bytes) or socket send (write_bytes)
-                        cand_up = max(raw_r_rate, raw_w_rate)
+                        # File read from disk (read_bytes) or socket send (write_bytes/other_bytes)
+                        cand_up = max(raw_r_rate, raw_w_rate, raw_o_rate)
                         cand_down = min(min(raw_r_rate, raw_w_rate), down_bytes_sec)
                     else:
                         # Mixed / balanced traffic
-                        if raw_w_rate > raw_r_rate * 2.0 and down_bytes_sec >= up_bytes_sec:
-                            cand_down = raw_w_rate
+                        best_rate = max(raw_r_rate, raw_w_rate, raw_o_rate)
+                        if down_bytes_sec >= up_bytes_sec:
+                            cand_down = best_rate
                             cand_up = min(raw_r_rate, up_bytes_sec)
-                        elif raw_r_rate > raw_w_rate * 2.0 and up_bytes_sec >= down_bytes_sec:
-                            cand_up = raw_r_rate
-                            cand_down = min(raw_w_rate, down_bytes_sec)
                         else:
-                            cand_down = raw_r_rate
-                            cand_up = raw_w_rate
+                            cand_up = best_rate
+                            cand_down = min(raw_w_rate, down_bytes_sec)
 
                     # If conn_count was 0 due to User Mode UAC masking, give at least 1 socket indication
                     if conn_count == 0 and (cand_down > 50 * 1024 or cand_up > 50 * 1024):

@@ -176,5 +176,94 @@ class TestDownloadDetection(unittest.TestCase):
         self.assertGreaterEqual(poe_proc['connections'], 1, "Should indicate active socket stream")
         self.assertIn("MB/s", poe_proc['down_formatted'])
 
+    @patch('psutil.net_io_counters')
+    @patch('psutil.net_connections')
+    @patch('psutil.process_iter')
+    def test_winsock_other_bytes_download_attribution(self, mock_proc_iter, mock_net_conns, mock_net_io):
+        """Simulate PoE 2 downloading via Winsock AFD/IOCTLs (other_bytes) into memory-mapped file."""
+        dt = 1.0
+        mock_net_io.side_effect = [
+            MagicMock(bytes_recv=100_000_000, bytes_sent=10_000_000),
+            MagicMock(bytes_recv=110_600_000, bytes_sent=10_050_000) # +10.6 MB down
+        ]
+
+        # Windows User Mode TCP table: socket has pid=None (masked)
+        masked_conn = MagicMock()
+        masked_conn.pid = None
+        masked_conn.status = 'ESTABLISHED'
+        masked_conn.raddr = MagicMock(ip='203.133.186.91')
+        mock_net_conns.return_value = [masked_conn]
+
+        proc_mock = MagicMock()
+        proc_mock.info = {
+            'pid': 24464,
+            'name': 'Client.exe',
+            'exe': 'D:\\Daum Games\\Path of Exile2\\Client.exe',
+            'cpu_percent': 18.0,
+            'memory_info': MagicMock(rss=1200 * 1024 * 1024)
+        }
+
+        # Cycle 1
+        proc_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=10000)
+        mock_proc_iter.return_value = [proc_mock]
+        self.tracker.prev_time = time.time() - dt
+        self.tracker.get_snapshot()
+
+        # Cycle 2: +10.6 MB accumulated exclusively in other_bytes (Winsock IOCTLs)
+        time.sleep(0.02)
+        curr_t = time.time()
+        self.tracker.prev_proc_io[24464] = (1000, 5000, 10000, curr_t - 1.0)
+        self.tracker.prev_time = curr_t - 1.0
+        proc_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=10000 + 10_600_000)
+        snap = self.tracker.get_snapshot()
+
+        poe_proc = next((p for p in snap['processes'] if p['pid'] == 24464), None)
+        self.assertIsNotNone(poe_proc, "PoE 2 Client.exe must be detected via other_bytes")
+        self.assertGreater(poe_proc['down_speed'], 9_000_000, "Download speed should be ~10.6 MB/s")
+        self.assertIn("MB/s", poe_proc['down_formatted'])
+
+    @patch('psutil.net_io_counters')
+    @patch('psutil.net_connections')
+    @patch('psutil.process_iter')
+    def test_loopback_only_msedgewebview2_not_attributed_download(self, mock_proc_iter, mock_net_conns, mock_net_io):
+        """msedgewebview2.exe connected only to 127.0.0.1 must NOT steal internet download traffic even if writing cache to disk."""
+        dt = 1.0
+        mock_net_io.side_effect = [
+            MagicMock(bytes_recv=100_000_000, bytes_sent=10_000_000),
+            MagicMock(bytes_recv=110_000_000, bytes_sent=10_050_000) # 10 MB system download
+        ]
+
+        # Loopback connection only (127.0.0.1)
+        loopback_conn = MagicMock()
+        loopback_conn.pid = 13468
+        loopback_conn.status = 'ESTABLISHED'
+        loopback_conn.raddr = MagicMock(ip='127.0.0.1')
+        mock_net_conns.return_value = [loopback_conn]
+
+        wv_mock = MagicMock()
+        wv_mock.info = {
+            'pid': 13468,
+            'name': 'msedgewebview2.exe',
+            'exe': 'C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\msedgewebview2.exe',
+            'cpu_percent': 2.0,
+            'memory_info': MagicMock(rss=100 * 1024 * 1024)
+        }
+
+        # Cycle 1
+        wv_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000, other_bytes=1000)
+        mock_proc_iter.return_value = [wv_mock]
+        self.tracker.prev_time = time.time() - dt
+        self.tracker.get_snapshot()
+
+        # Cycle 2: WebView2 writes 3 MB of DOM/canvas cache to local disk
+        wv_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000 + 3_000_000, other_bytes=1000)
+        self.tracker.prev_time = time.time() - dt
+        snap = self.tracker.get_snapshot()
+
+        wv_proc = next((p for p in snap['processes'] if p['pid'] == 13468), None)
+        if wv_proc:
+            self.assertEqual(wv_proc['down_speed'], 0.0, "Loopback WebView2 must not be attributed internet download")
+            self.assertEqual(wv_proc['up_speed'], 0.0)
+
 if __name__ == '__main__':
     unittest.main()

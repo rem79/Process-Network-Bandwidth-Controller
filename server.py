@@ -87,6 +87,7 @@ class ProcessTracker:
 
         # 2. Get active network connections grouped by PID
         pid_conn_info: Dict[int, Dict[str, Any]] = {}
+        unowned_remote_count = 0
         try:
             connections = psutil.net_connections(kind='inet')
             for conn in connections:
@@ -98,6 +99,11 @@ class ProcessTracker:
                         rip = conn.raddr.ip
                         if rip not in ('127.0.0.1', '::1', '0.0.0.0', '::') and not rip.startswith('127.'):
                             pid_conn_info[conn.pid]["has_remote"] = True
+                else:
+                    if conn.raddr:
+                        rip = conn.raddr.ip
+                        if rip not in ('127.0.0.1', '::1', '0.0.0.0', '::') and not rip.startswith('127.'):
+                            unowned_remote_count += 1
         except Exception as e:
             logging.debug(f"Error fetching net connections: {e}")
 
@@ -144,8 +150,32 @@ class ProcessTracker:
                 cand_down = 0.0
                 cand_up = 0.0
 
-                # Processes with no network connections and no QoS limit do not produce network traffic
+                # Determine if this process is eligible for network traffic attribution
+                is_candidate = False
                 if conn_count > 0 or is_limited:
+                    is_candidate = True
+                elif (down_bytes_sec > 1024 or up_bytes_sec > 1024):
+                    # In Windows User Mode, elevated processes have their socket PIDs masked (conn.pid is None).
+                    # If the process I/O activity correlates with active global network throughput,
+                    # it is an elevated downloader/uploader (e.g. game patcher, UAC elevated installer).
+                    # Exclude local disk copying operations by checking that the rate is consistent with network speed.
+                    if down_bytes_sec > up_bytes_sec * 1.5:
+                        if raw_w_rate > 50 * 1024 and raw_w_rate <= down_bytes_sec * 2.5:
+                            is_candidate = True
+                        elif raw_r_rate > 50 * 1024 and raw_r_rate <= down_bytes_sec * 2.5:
+                            is_candidate = True
+                    elif up_bytes_sec > down_bytes_sec * 1.5:
+                        if raw_r_rate > 50 * 1024 and raw_r_rate <= up_bytes_sec * 2.5:
+                            is_candidate = True
+                        elif raw_w_rate > 50 * 1024 and raw_w_rate <= up_bytes_sec * 2.5:
+                            is_candidate = True
+                    else:
+                        max_rate = max(raw_r_rate, raw_w_rate)
+                        total_net = down_bytes_sec + up_bytes_sec
+                        if max_rate > 50 * 1024 and max_rate <= total_net * 2.5:
+                            is_candidate = True
+
+                if is_candidate:
                     if down_bytes_sec > up_bytes_sec * 1.5:
                         # Dominant system download (e.g. game patcher, browser file download, streaming)
                         # Downloaded chunks written to disk (write_bytes) or socket read (read_bytes)
@@ -167,6 +197,10 @@ class ProcessTracker:
                         else:
                             cand_down = raw_r_rate
                             cand_up = raw_w_rate
+
+                    # If conn_count was 0 due to User Mode UAC masking, give at least 1 socket indication
+                    if conn_count == 0 and (cand_down > 50 * 1024 or cand_up > 50 * 1024):
+                        conn_count = max(1, min(unowned_remote_count, 8))
 
                 mem_mb = (proc.info['memory_info'].rss / (1024 * 1024)) if proc.info['memory_info'] else 0.0
                 proc_limit = active_limits.get(name) or active_limits.get(name.lower())
@@ -254,9 +288,9 @@ class ProcessTracker:
         # Sort by total active throughput descending
         proc_list.sort(key=lambda x: (x['down_speed'] + x['up_speed']), reverse=True)
 
-        # Cleanup terminated PIDs from tracking dictionary
-        active_pids = set(p['pid'] for p in proc_list)
-        self.prev_proc_io = {p: data for p, data in self.prev_proc_io.items() if p in active_pids}
+        # Cleanup terminated PIDs from tracking dictionary (only remove truly exited processes)
+        observed_pids = set(c['pid'] for c in raw_candidates)
+        self.prev_proc_io = {p: data for p, data in self.prev_proc_io.items() if p in observed_pids}
 
         # Periodic cleanup of old sample entries every 300 cycles (~5 minutes)
         self.batch_counter += 1

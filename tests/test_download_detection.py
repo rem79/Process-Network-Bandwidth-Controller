@@ -127,5 +127,54 @@ class TestDownloadDetection(unittest.TestCase):
         self.assertLess(chrome_proc['down_speed'], 100_000, "Download speed should be small (ACKs)")
         self.assertIn("MB/s", chrome_proc['up_formatted'])
 
+    @patch('psutil.net_io_counters')
+    @patch('psutil.net_connections')
+    @patch('psutil.process_iter')
+    def test_user_mode_elevated_process_download_with_masked_pid(self, mock_proc_iter, mock_net_conns, mock_net_io):
+        """Simulate an elevated game patcher running in User Mode where Windows returns conn.pid = None."""
+        dt = 1.0
+        mock_net_io.side_effect = [
+            MagicMock(bytes_recv=100_000_000, bytes_sent=10_000_000),
+            MagicMock(bytes_recv=111_000_000, bytes_sent=10_050_000) # +11 MB down
+        ]
+
+        # Windows User Mode TCP table: socket has pid=None (masked)
+        masked_conn = MagicMock()
+        masked_conn.pid = None
+        masked_conn.status = 'ESTABLISHED'
+        masked_conn.raddr = MagicMock(ip='203.133.186.91') # Kakao/PoE server
+        mock_net_conns.return_value = [masked_conn]
+
+        # Elevated PoE Game Client (PathOfExile_x64_KG.exe)
+        proc_mock = MagicMock()
+        proc_mock.info = {
+            'pid': 40732,
+            'name': 'PathOfExile_x64_KG.exe',
+            'exe': 'D:\\Daum Games\\Path of Exile2\\PathOfExile_x64_KG.exe',
+            'cpu_percent': 12.0,
+            'memory_info': MagicMock(rss=800 * 1024 * 1024)
+        }
+
+        # Cycle 1
+        proc_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000)
+        mock_proc_iter.return_value = [proc_mock]
+        self.tracker.prev_time = time.time() - dt
+        self.tracker.get_snapshot()
+
+        # Cycle 2: +11 MB written to disk over 1.0 second
+        time.sleep(0.02) # Ensure positive elapsed time
+        curr_t = time.time()
+        # Seed prev_proc_io timestamp to exactly 1.0s before curr_t
+        self.tracker.prev_proc_io[40732] = (1000, 5000, curr_t - 1.0)
+        self.tracker.prev_time = curr_t - 1.0
+        proc_mock.io_counters.return_value = MagicMock(read_bytes=1000, write_bytes=5000 + 11_000_000)
+        snap = self.tracker.get_snapshot()
+
+        poe_proc = next((p for p in snap['processes'] if p['pid'] == 40732), None)
+        self.assertIsNotNone(poe_proc, "Elevated game client must be detected even with masked PID")
+        self.assertGreater(poe_proc['down_speed'], 9_500_000, "Download speed should capture ~11 MB/s")
+        self.assertGreaterEqual(poe_proc['connections'], 1, "Should indicate active socket stream")
+        self.assertIn("MB/s", poe_proc['down_formatted'])
+
 if __name__ == '__main__':
     unittest.main()

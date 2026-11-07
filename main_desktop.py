@@ -310,15 +310,75 @@ def setup_tray():
     except Exception as e:
         logging.error(f"Error starting tray icon: {e}", exc_info=True)
 
+def request_self_elevation():
+    """
+    Attempts to relaunch the application with Windows Administrator privileges via UAC.
+    Returns True if the elevated process was successfully launched (in which case caller should exit).
+    Returns False if the user cancelled or denied the UAC prompt.
+    """
+    try:
+        if getattr(sys, 'frozen', False):
+            executable = sys.executable
+            params = "--elevated"
+            work_dir = os.path.dirname(os.path.abspath(executable))
+        else:
+            executable = sys.executable
+            desktop_main = os.path.abspath(__file__)
+            params = f'"{desktop_main}" --elevated'
+            work_dir = os.path.dirname(os.path.abspath(__file__))
+
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, work_dir, 1)
+        return ret > 32
+    except Exception as e:
+        logging.error(f"Self-elevation request failed: {e}")
+        return False
+
+def prompt_user_mode_fallback() -> bool:
+    """
+    Displays a native Windows MessageBox informing the user that Administrator privileges
+    were not granted, and asking if they want to proceed in User Mode.
+    Returns True if user clicked Yes (IDYES = 6), False otherwise.
+    """
+    MB_YESNO = 0x00000004
+    MB_ICONWARNING = 0x00000030
+    MB_TOPMOST = 0x00040000
+    IDYES = 6
+
+    title = "Network Sentinel - 권한 안내"
+    message = (
+        "관리자 권한을 획득하지 못했습니다.\n\n"
+        "관리자 권한이 없으면 네트워크 속도 제한(QoS) 등 일부 기능이 제한될 수 있습니다.\n\n"
+        "일반 '유저 모드'로 계속 실행하시겠습니까?"
+    )
+    result = ctypes.windll.user32.MessageBoxW(0, message, title, MB_YESNO | MB_ICONWARNING | MB_TOPMOST)
+    return result == IDYES
+
 def main():
     global app_window, single_instance_mutex
 
     is_elevated_arg = "--elevated" in sys.argv
+    user_mode_arg = "--user-mode" in sys.argv
     admin_active = False
     try:
         admin_active = ctypes.windll.shell32.IsUserAnAdmin() != 0
     except Exception:
         pass
+
+    # Initial launch: Prioritize Administrator mode.
+    # If not running as Admin and not explicitly flagged for user-mode, request UAC self-elevation.
+    if not admin_active and not user_mode_arg and not is_elevated_arg:
+        logging.info("Non-admin startup detected. Attempting automatic UAC elevation...")
+        elevated_started = request_self_elevation()
+        if elevated_started:
+            logging.info("Elevated instance launched successfully. Exiting non-admin launcher.")
+            sys.exit(0)
+        else:
+            logging.warning("UAC elevation cancelled or failed. Showing user mode fallback prompt...")
+            proceed_user_mode = prompt_user_mode_fallback()
+            if not proceed_user_mode:
+                logging.info("User declined to run in User Mode. Exiting application.")
+                sys.exit(0)
+            logging.info("User confirmed to run in User Mode. Continuing launch...")
 
     # 1. Single Instance Check: if elevating or already admin, take over from previous instance
     is_elevating = is_elevated_arg or admin_active
@@ -359,4 +419,3 @@ def main():
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     main()
-

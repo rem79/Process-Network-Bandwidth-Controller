@@ -1,0 +1,27 @@
+{
+  "edr-command-guard": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ../harness.py --hook-pre-tool",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "context-continuity-check": {
+    "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "python ../harness.py --hook-session-start",
+        "timeout": 10
+      }
+    ]
+  }
+}

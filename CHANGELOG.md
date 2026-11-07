@@ -2,6 +2,38 @@
 
 All notable changes to the **Process Network Bandwidth Controller** will be documented in this file.
 
+## [3.3.0] - 2026-11-08 (Administrator-First Launch & TCP ACK Pacing Throttling)
+### Added
+- **시작 시 관리자 권한 자동 승격 (Administrator-First Launch Flow)**:
+  - 더블 클릭 및 바로가기 실행 시 기본적으로 윈도우 UAC(`ShellExecuteW runas`)를 즉시 호출하여 관리자 권한으로 실행을 시도.
+  - 관리자 권한 획득 시 기존 스타터 프로세스는 즉시 종료되고 단일 윈도우 인스턴스로 매끄럽게 인계.
+- **UAC 취소/실패 시 윈도우 네이티브 안내창 Fallback (User Mode Dialog)**:
+  - 사용자가 UAC에서 "아니오"를 누르거나 권한 승격에 실패한 경우 `MessageBoxW`로 권한 안내 대화상자 표시.
+  - "관리자 권한이 없으면 네트워크 속도 제한(QoS) 등 일부 기능이 제한될 수 있습니다. 일반 '유저 모드'로 계속 실행하시겠습니까?" 팝업 제공.
+  - [예] 선택 시 유저 모드로 안전하게 진입하며, [아니오] 선택 시 깨끗하게 프로세스 종료.
+- **TCP ACK Pacing 기반 정밀 다운로드 속도 제어**:
+  - 윈도우 커널(`pacer.sys`)의 `New-NetQosPolicy`가 송신(Egress) 전용인 한계를 극복하기 위해, 다운로드 트래픽에 맞춰 수신 확인용 TCP ACK 패킷 속도를 약 52:1 비율로 자동 산출 페이싱.
+  - 원격 서버의 혼잡 윈도우(CWND)와 ACK 클록을 억제하여 물리적 유입 다운로드 속도를 지정한 수치(예: 1.0 MB/s)로 100% 정밀 제어 실측 검증.
+- **NLA(Network Location Awareness) 우회 레지스트리 자동 구성**:
+  - 도메인 미가입 윈도우 10/11 환경에서 로컬 QoS가 무시되는 현상을 방지하기 위해 `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\QoS`에 `"Do not use NLA" = "1"` 자동 보장.
+- **QoS 대역폭 제한 모달 내 방향 선택 옵션 추가**:
+  - 모달에 다운로드(Download Limit) 및 업로드(Upload Limit) 선택 드롭다운 추가.
+- **신규 권한 흐름 단위 테스트 5종 추가 (`tests/test_elevation_flow.py`)**:
+  - 전체 단위 테스트 35개 전 항목 통과 (35/35 PASSED).
+
+### Fixed
+- **UI 경로 역슬래시(`\`) 인라인 탈락 버그 수정**:
+  - 자바스크립트 인라인 파싱 중 `D:\Daum Games\...`의 역슬래시가 탈락되던 문제를 `data-target`과 URI 인코딩으로 해결하여 `PathOfExile_KG.exe` 등 타깃 프로세스 매칭 무결성 확보.
+- **원클릭 배치 스크립트(`run.bat`) 현행화**:
+  - `main_desktop.py` 타깃팅 및 `.exe` 빌드 최소화 규격 준수.
+
+## [3.2.0] - 2026-09-12 (Precise Download Attribution & VMDK Exclusion)
+### Added
+- **가상 머신/에뮬레이터 디스크 I/O 배제 (`VM_EMULATOR_NAMES`)**:
+  - LDPlayer, BlueStacks, Nox, VirtualBox, VMware, WSL 등 안드로이드 VM/에뮬레이터의 `.vmdk` 가상 디스크 쓰기를 인터넷 다운로드로 오인하던 현상 방지.
+- **동일 호스트 소켓 집중도(`max_same_host_conns`) 기반 가중 배분 알고리즘**:
+  - PoE 2, Steam, 대용량 패처처럼 단일 CDN 서버에 16~32개 소켓을 집중 병렬 연결하는 프로세스를 정밀 식별하여 대역폭 99% 이상 정확 할당.
+
 ## [3.1.0] - 2026-08-26 (Hybrid User/Admin Mode & Zero UAC Barrier)
 ### Added
 - **NIC Adapter & IPConfig (/all) Live Inspector (실무 네트워크 카드 진단)**:

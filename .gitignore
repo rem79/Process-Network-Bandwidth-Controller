@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -9,3 +9,4 @@ dist/
 .pytest_cache/
 *.db
 *.log
+crash_log.txt
